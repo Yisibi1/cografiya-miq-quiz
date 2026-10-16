@@ -1,0 +1,66 @@
+export const TOPICS_CATALOG = [
+  {
+    id: '1.1',
+    sectionNum: 'BÖLMƏ 1',
+    sectionTitle: 'COĞRAFİ MƏKAN',
+    topicCode: 'Mövzu 1.1',
+    title: 'Coğrafi Kəşflər və Tədqiqatlar',
+    subtitle: 'Coğrafiya elminin inkişaf tarixi, səyyahlar, çöl cihazları və metodlar',
+    description: 'Tarixi xəritələr (Babil, Eratosfen, Ptolemey, Merkator), kəşf mərhələləri, Türk-İslam və Azərbaycan alimləri, QMS/GPS, çöl cihazları, kartoqram-kartodiaqram və CİS layihələndirməsi.',
+    questionCount: 20,
+    grades: '6, 7, 8, 9, 10, 11-ci siniflər',
+    active: true,
+  },
+  {
+    id: '1.2',
+    sectionNum: 'BÖLMƏ 1',
+    sectionTitle: 'COĞRAFİ MƏKAN',
+    topicCode: 'Mövzu 1.2',
+    title: 'Kartoqrafik Təsvirlər, Dərəcə Toru və Miqyas',
+    subtitle: 'Proyeksiyalar, meridian və paralellər, yerli və qurşaq vaxtı məsələləri',
+    description: 'Silindrik, konus və azimutal proyeksiyalar, xəritələrdə təhriflər, miqyas hesablamaları, topoqrafik plan və horizontallar.',
+    questionCount: 25,
+    grades: '6, 7, 8, 10-cu siniflər',
+    active: false,
+    badge: 'Tezliklə'
+  },
+  {
+    id: '1.3',
+    sectionNum: 'BÖLMƏ 1',
+    sectionTitle: 'COĞRAFİ MƏKAN',
+    topicCode: 'Mövzu 1.3',
+    title: 'Geoinformasiya Sistemləri (CİS) və Məsafədən Zondlama',
+    subtitle: 'Rəqəmsal xəritəçəkmə, aerokosmik monitorinq və peyk naviqasiyası',
+    description: 'Vektor və rastr verilənlər, CİS proqram təminatı (ArcGIS, QGIS), spektrometr və dron zondlaması.',
+    questionCount: 20,
+    grades: '9, 10, 11-ci siniflər',
+    active: false,
+    badge: 'Tezliklə'
+  },
+  {
+    id: '2.1',
+    sectionNum: 'BÖLMƏ 2',
+    sectionTitle: 'TƏBİƏT (LİTOSFER VƏ RELYEF)',
+    topicCode: 'Mövzu 2.1',
+    title: 'Yerin Daxili Quruluşu və Litosfer Plitələri',
+    subtitle: 'Tektonik hərəkətlər, seysmik qurşaqlar və relyefin inkişafı',
+    description: 'Yerin geoxronologiyası, plitələrin konvergent və divergent sərhədləri, vulkanizm, zəlzələlər və morfostrukturlar.',
+    questionCount: 30,
+    grades: '6, 7, 8, 10-cu siniflər',
+    active: false,
+    badge: 'Tezliklə'
+  },
+  {
+    id: '2.2',
+    sectionNum: 'BÖLMƏ 2',
+    sectionTitle: 'TƏBİƏT (ATMOSFER VƏ İQLİM)',
+    topicCode: 'Mövzu 2.2',
+    title: 'Atmosfer, Günəş Radiasiyası və İqlim Tipləri',
+    subtitle: 'İstilik balansı, təzyiq qurşaqları, daimi küləklər və iqlim diaqramları',
+    description: 'Günəşin düşmə bucağı, ümumi və udulan radiasiya, passat və qərb küləkləri, siklon-antisiklon və iqlim təsnifatı.',
+    questionCount: 30,
+    grades: '7, 8, 9, 10-cu siniflər',
+    active: false,
+    badge: 'Tezliklə'
+  }
+];
