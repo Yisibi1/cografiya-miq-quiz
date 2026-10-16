@@ -1,6 +1,8 @@
 export const QUIZ_QUESTIONS = [
   {
     "id": 1,
+    "category": "Tarixi Xəritələr və Kartoqrafiya",
+    "categoryIcon": "xəritə",
     "question": "1. Babil gil lövhəsi («İmago Mundi») ilə Eratosfenin xəritəsinin müqayisəsinə dair hansı fikir YANLIŞDIR?",
     "options": [
       "A) Babil xəritəsi İraqın Sippar ərazisindən tapılmış, mərkəzində Babil şəhəri və Fərat çayı təsvir olunmuşdur.",
@@ -11,10 +13,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "C",
     "explanation": "Babil gil lövhəsində dərəcə toru ümumiyyətlə yoxdur, obyektlər simvolik dağ üçbucaqları və dairəvi su ilə əhatələnmişdir. Bərabər aralıqlı meridianlar və dərəcə torunun ilkin əsasları ilk dəfə Eratosfen tərəfindən tətbiq olunmuşdur.",
-    "source": "8-ci sinif Coğrafiya, §1, səh. 8–10; Metodik vəsait, səh. 18–21."
+    "source": "8-ci sinif Coğrafiya, §1, səh. 8–10; Metodik vəsait, səh. 18–21.",
+    "remedyBook": "8-ci sinif Coğrafiya, §1 (səh. 8–10)"
   },
   {
     "id": 2,
+    "category": "Tarixi Xəritələr və Kartoqrafiya",
+    "categoryIcon": "xəritə",
     "question": "2. Ptolemeyin xəritəsi ilə Merkatorun 1569-cu il xəritəsinin oxşar və fərqli cəhətlərinə dair doğru müqayisəni müəyyən edin:",
     "options": [
       "A) Hər iki xəritədə Avstraliya və Antarktida qitələri dəqiq əks olunmuşdur.",
@@ -25,10 +30,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Ptolemey xəritəsində Hind okeanı cənubdan naməlum quru sahəsi ilə qapanmış daxili göl kimi təsvir edildiyi halda, Merkator xəritəsində Magellan səyahətindən sonra Vahid Dünya Okeanının tərkib hissəsi kimi açıq verilmişdir.",
-    "source": "8-ci sinif Coğrafiya, §1, səh. 10–12; 6-cı sinif, səh. 40."
+    "source": "8-ci sinif Coğrafiya, §1, səh. 10–12; 6-cı sinif, səh. 40.",
+    "remedyBook": "8-ci sinif Coğrafiya, §1 (səh. 10–12)"
   },
   {
     "id": 3,
+    "category": "Böyük Kəşflər və Səyyahlar",
+    "categoryIcon": "kompas",
     "question": "3. Magellan və Elkanonun ilk dünya səyahəti (1519–1522) ilə bağlı dərslik faktlarına əsasən hansı mülahizə səhvdir?",
     "options": [
       "A) Ekspedisiya 5 gəmi və 270 nəfərlik heyətlə İspaniyanın San-Lukar limanından yola düşmüşdür.",
@@ -39,10 +47,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "E",
     "explanation": "Magellan ekspedisiyası Antarktida materikinə çatmamışdır. Onlar Cənubi Amerikanın cənubundakı ensiz boğazdan (Magellan boğazı) keçərək Sakit okeana çıxmışlar.",
-    "source": "8-ci sinif Coğrafiya, §1, səh. 11–13; Metodik vəsait, səh. 21–23."
+    "source": "8-ci sinif Coğrafiya, §1, səh. 11–13; Metodik vəsait, səh. 21–23.",
+    "remedyBook": "8-ci sinif Coğrafiya, §1 (səh. 11–13)"
   },
   {
     "id": 4,
+    "category": "Böyük Kəşflər və Səyyahlar",
+    "categoryIcon": "kompas",
     "question": "4. Böyük coğrafi kəşflər dövründə (XV əsrin ortaları – XVII əsrin ortaları) kəşf EDİLMƏYƏN coğrafi obyektlər cütünü müəyyən edin:",
     "options": [
       "A) Amerika qitəsi və Sakit okean",
@@ -53,10 +64,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Böyük coğrafi kəşflər dövründə Antarktida materiki (1820) və Şimal Buzlu okeanının daxili hissələri kəşf edilməmişdir.",
-    "source": "8-ci sinif Coğrafiya, §1, səh. 12–13; Metodik vəsait, səh. 22."
+    "source": "8-ci sinif Coğrafiya, §1, səh. 12–13; Metodik vəsait, səh. 22.",
+    "remedyBook": "8-ci sinif Coğrafiya, §1 (səh. 12–13)"
   },
   {
     "id": 5,
+    "category": "Böyük Kəşflər və Səyyahlar",
+    "categoryIcon": "kompas",
     "question": "5. Aleksandr fon Humboldtun Cənubi Amerika ekspedisiyası (1799–1804) zamanı əldə etdiyi fundamental elmi nəticələr sırasına aid DEYİL:",
     "options": [
       "A) Dağlıq ərazilərdə təbiət komplekslərinin şaquli qurşaqlıq üzrə dəyişməsi qanunauyğunluğunun kəşfi.",
@@ -67,10 +81,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "D",
     "explanation": "Cənub qütbünə çatan ilk insan A. fon Humboldt deyil, 1911-ci ildə Rual Amundsen və 1912-ci ildə Robert Skott olmuşdur.",
-    "source": "8-ci sinif Coğrafiya, §1, səh. 12–13; 10-cu sinif, səh. 7."
+    "source": "8-ci sinif Coğrafiya, §1, səh. 12–13; 10-cu sinif, səh. 7.",
+    "remedyBook": "8-ci sinif Coğrafiya, §1 (səh. 12–13) & 10-cu sinif səh. 7"
   },
   {
     "id": 6,
+    "category": "Türk-İslam Dünyası Alimləri",
+    "categoryIcon": "alim",
     "question": "6. Əbu Reyhan əl-Biruninin coğrafiya elminə verdiyi töhfələrə dair düzgün variantı seçin:",
     "options": [
       "A) 1017-ci ildə Səmərqənddə Şərqdə ilk dəfə 5 metr diametrli relyefli gil qlobus hazırlamış, Yerin radiusunu 6339.6 km hesablamışdır.",
@@ -81,10 +98,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "A",
     "explanation": "Əbu Reyhan əl-Biruni 1017-ci ildə Səmərqənddə 5 metr diametrli ilk relyefli gil qlobusu hazırlamış və Yerin radiusunu 6339.6 km hesablamışdır.",
-    "source": "6-cı sinif Coğrafiya, səh. 10–11; 8-ci sinif Metodik vəsait, səh. 24–26."
+    "source": "6-cı sinif Coğrafiya, səh. 10–11; 8-ci sinif Metodik vəsait, səh. 24–26.",
+    "remedyBook": "6-cı sinif Coğrafiya, səh. 10–11 & 8-ci sinif MV səh. 24–26"
   },
   {
     "id": 7,
+    "category": "Türk-İslam Dünyası Alimləri",
+    "categoryIcon": "alim",
     "question": "7. Mahmud Kaşğarinin «Divanü lüğat-it-türk» (1072–1074) əsərindəki ilk türk dünya xəritəsinin xüsusiyyətlərinə dair doğru fikri tapın:",
     "options": [
       "A) Xəritənin mərkəzində Roma şəhəri yerləşir və Şimal istiqaməti yuxarıda göstərilmişdir.",
@@ -95,10 +115,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Mahmud Kaşğarinin ilk türk dünya xəritəsi dairəvi formada olub, mərkəzində Balasaqun və İssık-Kul yerləşir, qədim türk ənənəsinə görə Şərq istiqaməti yuxarıda verilmişdir.",
-    "source": "8-ci sinif Coğrafiya, §2, səh. 15–16; Metodik vəsait, səh. 25."
+    "source": "8-ci sinif Coğrafiya, §2, səh. 15–16; Metodik vəsait, səh. 25.",
+    "remedyBook": "8-ci sinif Coğrafiya, §2 (səh. 15–16)"
   },
   {
     "id": 8,
+    "category": "Türk-İslam Dünyası Alimləri",
+    "categoryIcon": "alim",
     "question": "8. Piri Rəisin 1513-cü il Dünya xəritəsi və «Kitabi-Bəhriyyə» əsəri haqqında deyilənlərdən hansı həqiqətə uyğundur?",
     "options": [
       "A) Xəritə perqament deyil, gil lövhə üzərində mixi yazı ilə həkk edilmişdir.",
@@ -109,10 +132,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Piri Rəisin xəritələrində dərəcə toru əvəzinə kompas gülləri və onlardan çıxan istiqamətverici rumb xətləri istifadə edilmişdir.",
-    "source": "8-ci sinif Coğrafiya, §2, səh. 16–17; Metodik vəsait, səh. 26."
+    "source": "8-ci sinif Coğrafiya, §2, səh. 16–17; Metodik vəsait, səh. 26.",
+    "remedyBook": "8-ci sinif Coğrafiya, §2 (səh. 16–17)"
   },
   {
     "id": 9,
+    "category": "Azərbaycan Coğrafiya Məktəbi",
+    "categoryIcon": "azerbaycan",
     "question": "9. Nəsirəddin Tusi və Əbdürrəşid Bakuvinin coğrafi irsinə dair hansı müqayisə tamamilə doğrudur?",
     "options": [
       "A) Tusi Yeri 7 iqlimə bölmüş, Bakuvi isə 256 şəhərin koordinatlar cədvəlini tərtib etmişdir.",
@@ -123,10 +149,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Nəsirəddin Tusi 1259 Marağa rəsədxanasında 256 şəhərin koordinatını «Zic-İlxani»də vermiş, Əbdürrəşid Bakuvi isə «Abidələrin xülasəsi...» əsərində Abşeronun neft quyuları və ticarəti barədə məlumat vermişdir.",
-    "source": "8-ci sinif Coğrafiya, §2, səh. 14–16; Metodik vəsait, səh. 24–25."
+    "source": "8-ci sinif Coğrafiya, §2, səh. 14–16; Metodik vəsait, səh. 24–25.",
+    "remedyBook": "8-ci sinif Coğrafiya, §2 (səh. 14–16)"
   },
   {
     "id": 10,
+    "category": "Təbiət Fəlsəfəsi və Müasir Sahələr",
+    "categoryIcon": "elm",
     "question": "10. Qədim yunan filosofu Platonun təbiət fəlsəfəsindəki həndəsi fiqurlar və təbii ünsürlərin düzgün uyğunluğunu müəyyən edin:",
     "options": [
       "A) Tetraedr — Torpaq; Kub — Od; Oktaedr — Su; İkosaedr — Hava; Dodekaedr — Kainat",
@@ -137,10 +166,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Platonun həndəsi ünsürləri: Tetraedr = Od; Kub = Torpaq; Oktaedr = Hava; İkosaedr = Su; Dodekaedr = Kainat.",
-    "source": "10-cu sinif Coğrafiya, §1, səh. 6–7; Metodik vəsait, səh. 26–28."
+    "source": "10-cu sinif Coğrafiya, §1, səh. 6–7; Metodik vəsait, səh. 26–28.",
+    "remedyBook": "10-cu sinif Coğrafiya, §1 (səh. 6–7)"
   },
   {
     "id": 11,
+    "category": "Təbiət Fəlsəfəsi və Müasir Sahələr",
+    "categoryIcon": "elm",
     "question": "11. Fiziki və İqtisadi-sosial coğrafiyanın YENİ formalaşmış sahələrinin doğru göstərildiyi bəndi tapın:",
     "options": [
       "A) Geomorfologiya, İqlimşünaslıq, Sənaye coğrafiyası, Əhali coğrafiyası",
@@ -151,10 +183,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Rekultivasiya və Kosmik geomorfologiya fiziki coğrafiyanın, Tibbi coğrafiya və Geosiyasət isə ictimai coğrafiyanın yeni formalaşmış sahələridir.",
-    "source": "10-cu sinif Coğrafiya, §1, səh. 7–8; Metodik vəsait, səh. 28–29."
+    "source": "10-cu sinif Coğrafiya, §1, səh. 7–8; Metodik vəsait, səh. 28–29.",
+    "remedyBook": "10-cu sinif Coğrafiya, §1 (səh. 7–8)"
   },
   {
     "id": 12,
+    "category": "Dərəcə Toru, Koordinatlar və QMS (GPS)",
+    "categoryIcon": "gps",
     "question": "12. Coğrafi mövqe və dərəcə toru haqqında verilmiş fikirlərdən hansı elmi cəhətdən DÜZGÜNDÜR?",
     "options": [
       "A) Şimal və Cənub qütb nöqtələri 180° coğrafi uzunluğa malikdir.",
@@ -165,10 +200,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Şimal və Cənub qütb nöqtələrində bütün meridianlar kəsişərək birləşdiyi üçün qütblərin coğrafi uzunluğu YOXDUR (yalnız 90° enlikləri var).",
-    "source": "6-cı sinif Coğrafiya, §4, səh. 28–30; Metodik vəsait, səh. 22."
+    "source": "6-cı sinif Coğrafiya, §4, səh. 28–30; Metodik vəsait, səh. 22.",
+    "remedyBook": "6-cı sinif Coğrafiya, §4 (səh. 28–30)"
   },
   {
     "id": 13,
+    "category": "Dərəcə Toru, Koordinatlar və QMS (GPS)",
+    "categoryIcon": "gps",
     "question": "13. QMS (GPS) sistemi ilə Yerdəki obyektin 3D fəza koordinatlarını və vaxtını dəqiq təyin etmək üçün qəbuledici cihaz ən azı neçə peykdən siqnal almalıdır?",
     "options": [
       "A) 1 peyk (yalnız coğrafi enlik üçün)",
@@ -179,10 +217,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "D",
     "explanation": "Yer səthində 3D məkan koordinatlarını (enlik, uzunluq, hündürlük) və saat sinxronizasiyasını təmin etmək üçün ən azı 4 peykdən siqnal alınmalıdır.",
-    "source": "7-ci sinif Coğrafiya, §1, səh. 12–14; Metodik vəsait, səh. 20–22."
+    "source": "7-ci sinif Coğrafiya, §1, səh. 12–14; Metodik vəsait, səh. 20–22.",
+    "remedyBook": "7-ci sinif Coğrafiya, §1 (səh. 12–14)"
   },
   {
     "id": 14,
+    "category": "Çöl Cihazları və Tədqiqat Metodları",
+    "categoryIcon": "cihaz",
     "question": "14. Çöl tədqiqatı alətlərindən hansı çay və göl çöküntülərinin dənəvərlik tərkibini və ölçüsünü təyin etmək üçün istifadə olunan xüsusi dərəcələnmiş metal çərçivədir?",
     "options": [
       "A) Silometr",
@@ -193,10 +234,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Ştanger — çay və göl sahillərində qum, çınqıl və süxur qırıntılarının dənəvərlik tərkibini təyin edən xüsusi çərçivə-alətdir.",
-    "source": "6-cı sinif Coğrafiya, §14, səh. 70–72; Metodik vəsait, səh. 52–54."
+    "source": "6-cı sinif Coğrafiya, §14, səh. 70–72; Metodik vəsait, səh. 52–54.",
+    "remedyBook": "6-cı sinif Coğrafiya, §14 (səh. 70–72)"
   },
   {
     "id": 15,
+    "category": "Çöl Cihazları və Tədqiqat Metodları",
+    "categoryIcon": "cihaz",
     "question": "15. Silometr cihazının təyinatı və iş prinsipi hansı bənddə düzgün verilmişdir?",
     "options": [
       "A) Çayın axın sürətini və dərinliyini ultrasəslə ölçür.",
@@ -207,10 +251,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "C",
     "explanation": "Silometr lazer və optik impulslarla bulud qatının alt sərhədinin hündürlüyünü dəqiq ölçən aviasiya-meteorologiya cihazıdır.",
-    "source": "6-cı sinif Coğrafiya Metodik vəsait, səh. 53–54."
+    "source": "6-cı sinif Coğrafiya Metodik vəsait, səh. 53–54.",
+    "remedyBook": "6-cı sinif Metodik vəsait, səh. 53–54"
   },
   {
     "id": 16,
+    "category": "Çöl Cihazları və Tədqiqat Metodları",
+    "categoryIcon": "cihaz",
     "question": "16. Şimali Amerikada Kolorado kanyonunun formalaşması tarixi metodun hansı 3 ardıcıl mərhələsi ilə düzgün izah olunur?",
     "options": [
       "A) 1. Buzlaşma; 2. Vulkan püskürməsi; 3. Külək eroziyası",
@@ -221,10 +268,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Kolorado kanyonunun tarixi inkişafı: 1. Ərazinin çökməsi və dəniz çöküntülərinin toplanması; 2. Yerin qalxması və quruya çevrilməsi; 3. Çayın dərin kanyon dərəsi açması.",
-    "source": "10-cu sinif Coğrafiya, §2, səh. 9–10; Metodik vəsait, səh. 31–32."
+    "source": "10-cu sinif Coğrafiya, §2, səh. 9–10; Metodik vəsait, səh. 31–32.",
+    "remedyBook": "10-cu sinif Coğrafiya, §2 (səh. 9–10)"
   },
   {
     "id": 17,
+    "category": "Kartoqram, CİS və Modelləşdirmə",
+    "categoryIcon": "cis",
     "question": "17. Kartoqram və Kartodiaqram üsullarının müqayisəsinə aid doğru variantı seçin:",
     "options": [
       "A) Kartoqram mütləq həcm statistikası üçün, kartodiaqram isə nisbi intensivlik göstəriciləri üçün istifadə olunur.",
@@ -235,10 +285,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "C",
     "explanation": "Kartoqram nisbi kəmiyyət göstəricilərini (intensivliyi) rəng çalarları ilə, kartodiaqram isə mütləq kəmiyyət göstəricilərini həndəsi diaqram fiqurları ilə əks etdirir.",
-    "source": "9-cu sinif Coğrafiya, §1, səh. 8–11; Metodik vəsait, səh. 14–17."
+    "source": "9-cu sinif Coğrafiya, §1, səh. 8–11; Metodik vəsait, səh. 14–17.",
+    "remedyBook": "9-cu sinif Coğrafiya, §1 (səh. 8–11)"
   },
   {
     "id": 18,
+    "category": "Kartoqram, CİS və Modelləşdirmə",
+    "categoryIcon": "cis",
     "question": "18. Coğrafi modelləşdirmənin dərslikdə verilən 3 növü hansı bənddə tam və düzgün qruplaşdırılmışdır?",
     "options": [
       "A) Mətn, Cədvəl, Qrafik",
@@ -249,10 +302,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Coğrafi modelləşdirmənin 3 növü: Cihaz modeli (Telluri), 3D Relyef xəritəsi və Maket modeli (Vulkan kəsiyi maketi).",
-    "source": "11-ci sinif Coğrafiya, §1.1, səh. 8–10; Metodik vəsait, səh. 14–16."
+    "source": "11-ci sinif Coğrafiya, §1.1, səh. 8–10; Metodik vəsait, səh. 14–16.",
+    "remedyBook": "11-ci sinif Coğrafiya, §1.1 (səh. 8–10)"
   },
   {
     "id": 19,
+    "category": "Kartoqram, CİS və Modelləşdirmə",
+    "categoryIcon": "cis",
     "question": "19. «Worldmapper» layihəsi çərçivəsində tərtib edilən Anamorfoz xəritələrin əsas fərqləndirici xüsusiyyəti nədir?",
     "options": [
       "A) Bütün ölkələrin sərhədləri riyazi miqyasa mütləq uyğunluqla çəkilir.",
@@ -263,10 +319,13 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "B",
     "explanation": "Anamorfoz xəritələrdə ölkə və ərazilərin konturları real sahələrinə görə deyil, araşdırılan mövzunun statistik həcminə görə mütənasib şəkildə deformasiyaya uğradılır.",
-    "source": "11-ci sinif Coğrafiya, §1.5, səh. 28–30; Metodik vəsait, səh. 18–20."
+    "source": "11-ci sinif Coğrafiya, §1.5, səh. 28–30; Metodik vəsait, səh. 18–20.",
+    "remedyBook": "11-ci sinif Coğrafiya, §1.5 (səh. 28–30)"
   },
   {
     "id": 20,
+    "category": "Kartoqram, CİS və Modelləşdirmə",
+    "categoryIcon": "cis",
     "question": "20. Coğrafi İnformasiya Sistemləri (CİS) üzrə yeni beynəlxalq hava limanının layihələndirilməsi zamanı hansı addım səhv təsvir edilmişdir?",
     "options": [
       "A) Addım 1: Uçuş-eniş zolağı üçün meyilliyi 2°-dən az olan düzənlik ərazilər seçilir.",
@@ -277,6 +336,7 @@ export const QUIZ_QUESTIONS = [
     ],
     "correct": "D",
     "explanation": "Hava limanı heç vaxt subasar sahələrdə və ya bataqlıqlarda tikilə bilməz; hidrologiya layı məhz bu riskli zonaları layihədən çıxarmaq üçün təhlil olunur.",
-    "source": "11-ci sinif Coğrafiya, §1.6, səh. 34–38; Metodik vəsait, səh. 21–23."
+    "source": "11-ci sinif Coğrafiya, §1.6, səh. 34–38; Metodik vəsait, səh. 21–23.",
+    "remedyBook": "11-ci sinif Coğrafiya, §1.6 (səh. 34–38)"
   }
 ];

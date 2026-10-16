@@ -12,17 +12,33 @@ function shuffleArray(array) {
 }
 
 export default function App() {
-  const [mode, setMode] = useState('study'); // 'study' | 'exam'
+  const [mode, setMode] = useState('study'); // 'study' | 'exam' | 'analytics'
   const [questions, setQuestions] = useState(QUIZ_QUESTIONS);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [userAnswers, setUserAnswers] = useState({}); // { [qId]: selectedOptLetter }
-  const [showExplanation, setShowExplanation] = useState({}); // { [qId]: boolean }
+  const [userAnswers, setUserAnswers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('miq_user_answers');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [showExplanation, setShowExplanation] = useState({});
   const [examSubmitted, setExamSubmitted] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(25 * 60); // 25 minutes in seconds
-  const [filterWrongOnly, setFilterWrongOnly] = useState(false);
+  const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [showQuestionDrawer, setShowQuestionDrawer] = useState(false);
+  const [activeCategoryFilter, setActiveCategoryFilter] = useState('all');
 
-  // Timer for exam mode
+  // Save answers to localStorage for persistent analytics
+  useEffect(() => {
+    try {
+      localStorage.setItem('miq_user_answers', JSON.stringify(userAnswers));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [userAnswers]);
+
+  // Exam timer
   useEffect(() => {
     let timer = null;
     if (mode === 'exam' && !examSubmitted && timeLeft > 0) {
@@ -58,26 +74,44 @@ export default function App() {
     setShowExplanation({});
     setExamSubmitted(false);
     setTimeLeft(25 * 60);
+    setActiveCategoryFilter('all');
   };
 
   const handleReset = () => {
-    setUserAnswers({});
-    setShowExplanation({});
-    setExamSubmitted(false);
-    setTimeLeft(25 * 60);
-    setCurrentIndex(0);
+    if (window.confirm('Bütün cavabları və analiz statistikanızı sıfırlamaq istəyirsiniz?')) {
+      setUserAnswers({});
+      setShowExplanation({});
+      setExamSubmitted(false);
+      setTimeLeft(25 * 60);
+      setCurrentIndex(0);
+      setQuestions(QUIZ_QUESTIONS);
+      setActiveCategoryFilter('all');
+      localStorage.removeItem('miq_user_answers');
+    }
   };
 
   const handleRetestWrong = () => {
-    const wrongQs = questions.filter((q) => userAnswers[q.id] && userAnswers[q.id] !== q.correct);
+    const wrongQs = QUIZ_QUESTIONS.filter((q) => userAnswers[q.id] && userAnswers[q.id] !== q.correct);
     if (wrongQs.length === 0) return;
     setQuestions(wrongQs);
     setCurrentIndex(0);
-    setUserAnswers({});
-    setShowExplanation({});
     setExamSubmitted(false);
     setMode('study');
     setTimeLeft(25 * 60);
+  };
+
+  const handleFilterByCategory = (categoryName) => {
+    const filtered = QUIZ_QUESTIONS.filter((q) => q.category === categoryName);
+    setQuestions(filtered);
+    setCurrentIndex(0);
+    setMode('study');
+    setActiveCategoryFilter(categoryName);
+  };
+
+  const handleResetFilter = () => {
+    setQuestions(QUIZ_QUESTIONS);
+    setCurrentIndex(0);
+    setActiveCategoryFilter('all');
   };
 
   // Exam stats
@@ -99,7 +133,64 @@ export default function App() {
     return { correct, wrong, unanswered, percentage };
   }, [questions, userAnswers]);
 
-  // Format timer
+  // Deep Diagnostic Analytics by Category / Subtopic
+  const categoryAnalytics = useMemo(() => {
+    const catMap = {};
+    QUIZ_QUESTIONS.forEach((q) => {
+      if (!catMap[q.category]) {
+        catMap[q.category] = {
+          name: q.category,
+          total: 0,
+          answered: 0,
+          correct: 0,
+          wrong: 0,
+          remedyBooks: new Set(),
+        };
+      }
+      catMap[q.category].total += 1;
+      const ans = userAnswers[q.id];
+      if (ans) {
+        catMap[q.category].answered += 1;
+        if (ans === q.correct) {
+          catMap[q.category].correct += 1;
+        } else {
+          catMap[q.category].wrong += 1;
+          if (q.remedyBook) catMap[q.category].remedyBooks.add(q.remedyBook);
+        }
+      }
+    });
+
+    return Object.values(catMap).map((cat) => {
+      const pct = cat.answered > 0 ? Math.round((cat.correct / cat.total) * 100) : 0;
+      let status = 'not_started';
+      let statusLabel = 'İşlənməyib';
+      if (cat.answered > 0) {
+        if (pct >= 80) {
+          status = 'mastered';
+          statusLabel = 'Mükəmməl Mənimsənilib';
+        } else if (pct >= 50) {
+          status = 'moderate';
+          statusLabel = 'Orta — Təkrar Lazımdır';
+        } else {
+          status = 'weak';
+          statusLabel = 'Təhlükəli Zəif Nöqtə!';
+        }
+      }
+      return {
+        ...cat,
+        percentage: pct,
+        status,
+        statusLabel,
+        remedyList: Array.from(cat.remedyBooks),
+      };
+    });
+  }, [userAnswers]);
+
+  // Weak categories identifying list
+  const weakCategories = useMemo(() => {
+    return categoryAnalytics.filter((c) => c.answered > 0 && c.percentage < 60);
+  }, [categoryAnalytics]);
+
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -112,15 +203,15 @@ export default function App() {
       <header className="main-header">
         <div className="header-inner">
           <div className="brand-block">
-            <span className="badge-academic">MİQ Hazırlıq • Mövzu 1.1</span>
+            <span className="badge-academic">MİQ Hazırlıq Portalı • Mövzu 1.1</span>
             <h1 className="header-title">Coğrafi Kəşflər və Tədqiqatlar</h1>
             <p className="author-tag">
-              Müəllif: <strong>Yusif Vahabzadə</strong> • 20 Elmi Situasiya və Uyğunluq Testi
+              Müəllif: <strong>Yusif Vahabzadə</strong> • 6–11-ci Sinif Dərslik və Metodik İzahlı Quiz Sistemi
             </p>
           </div>
 
           <div className="header-actions">
-            {/* Mode Switcher */}
+            {/* 3 Main Mode Switchers */}
             <div className="mode-toggle">
               <button
                 className={`mode-btn ${mode === 'study' ? 'active' : ''}`}
@@ -136,9 +227,17 @@ export default function App() {
                 onClick={() => {
                   setMode('exam');
                   setExamSubmitted(false);
+                  setQuestions(QUIZ_QUESTIONS);
+                  setActiveCategoryFilter('all');
                 }}
               >
                 Sınaq Rejimi
+              </button>
+              <button
+                className={`mode-btn ${mode === 'analytics' ? 'active' : ''}`}
+                onClick={() => setMode('analytics')}
+              >
+                Diaqnostik Analiz {weakCategories.length > 0 ? `(${weakCategories.length})` : ''}
               </button>
             </div>
 
@@ -156,7 +255,7 @@ export default function App() {
           <div
             className="progress-bar-fill"
             style={{
-              width: `${((Object.keys(userAnswers).length) / questions.length) * 100}%`,
+              width: `${(Object.keys(userAnswers).length / QUIZ_QUESTIONS.length) * 100}%`,
             }}
           />
         </div>
@@ -164,209 +263,385 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="content-wrap">
-        {/* Navigation Quick Bar */}
-        <div className="control-strip">
-          <div className="q-nav-status">
-            <span>Sual <strong>{currentIndex + 1}</strong> / {questions.length}</span>
-            <span className="status-dot">•</span>
-            <span>Cavablanan: {Object.keys(userAnswers).length}</span>
-          </div>
-
-          <div className="action-buttons">
-            <button
-              className="btn-secondary"
-              onClick={() => setShowQuestionDrawer(!showQuestionDrawer)}
-            >
-              Sualların Siyahısı
+        {/* Category Filter Banner if active */}
+        {activeCategoryFilter !== 'all' && (
+          <div className="filter-active-banner">
+            <span>Fokus Rejimi: <strong>{activeCategoryFilter}</strong> ({questions.length} sual)</span>
+            <button className="btn-filter-reset" onClick={handleResetFilter}>
+              Bütün Suallara Qayıt (20)
             </button>
-            <button className="btn-secondary" onClick={handleShuffle}>
-              Qarışdır
-            </button>
-            <button className="btn-secondary" onClick={handleReset}>
-              Sıfırla
-            </button>
-          </div>
-        </div>
-
-        {/* Question Selector Drawer (Collapsible) */}
-        {showQuestionDrawer && (
-          <div className="drawer-card">
-            <div className="drawer-header">
-              <span>Bütün Suallar üzrə Naviqasiya:</span>
-              <button className="btn-close" onClick={() => setShowQuestionDrawer(false)}>✕</button>
-            </div>
-            <div className="q-grid">
-              {questions.map((q, idx) => {
-                const ans = userAnswers[q.id];
-                let statusClass = 'unanswered';
-                if (ans) {
-                  if (mode === 'study' || examSubmitted) {
-                    statusClass = ans === q.correct ? 'correct' : 'wrong';
-                  } else {
-                    statusClass = 'answered';
-                  }
-                }
-                const isCurrent = idx === currentIndex;
-                return (
-                  <button
-                    key={q.id}
-                    className={`q-grid-btn ${statusClass} ${isCurrent ? 'current' : ''}`}
-                    onClick={() => {
-                      setCurrentIndex(idx);
-                      setShowQuestionDrawer(false);
-                    }}
-                  >
-                    {idx + 1}
-                  </button>
-                );
-              })}
-            </div>
           </div>
         )}
 
-        {/* Exam Result View */}
-        {mode === 'exam' && examSubmitted ? (
-          <div className="results-card">
-            <div className="results-header">
-              <span className="results-pill">Sınaq Nəticəsi</span>
-              <h2 className="results-score">{stats.percentage}%</h2>
-              <p className="results-subtitle">
-                20 testdən <strong>{stats.correct}</strong> düzgün cavab topladınız.
+        {/* VIEW 1: DIAGNOSTIC ANALYTICS VIEW */}
+        {mode === 'analytics' ? (
+          <div className="analytics-card">
+            <div className="analytics-hero">
+              <span className="badge-pill">Fərdi MİQ Diaqnostika Mərkəzi</span>
+              <h2 className="analytics-title">Mövzu 1.1 üzrə Biliklərinizin Dəqiq Xəritəsi</h2>
+              <p className="analytics-desc">
+                Sistem hər bir testin arxasındakı alt-mövzunu təhlil edərək, MİQ imtahanında ən çox hansı hissədən bal
+                itirmə təhlükənizin olduğunu və hansı dərslik səhifələrini təkrar oxumalı olduğunuzu müəyyən edir.
               </p>
             </div>
 
-            <div className="stats-row">
-              <div className="stat-box stat-correct">
-                <span className="stat-num">{stats.correct}</span>
-                <span className="stat-lbl">Düzgün</span>
+            {/* Overall summary stats */}
+            <div className="analytics-summary-grid">
+              <div className="summary-box">
+                <span className="summary-val">{Object.keys(userAnswers).length} / {QUIZ_QUESTIONS.length}</span>
+                <span className="summary-lbl">İşlənən Suallar</span>
               </div>
-              <div className="stat-box stat-wrong">
-                <span className="stat-num">{stats.wrong}</span>
-                <span className="stat-lbl">Səhv</span>
+              <div className="summary-box">
+                <span className="summary-val text-emerald">
+                  {QUIZ_QUESTIONS.filter((q) => userAnswers[q.id] === q.correct).length}
+                </span>
+                <span className="summary-lbl">Düzgün Cavab</span>
               </div>
-              <div className="stat-box stat-empty">
-                <span className="stat-num">{stats.unanswered}</span>
-                <span className="stat-lbl">Boş</span>
+              <div className="summary-box">
+                <span className="summary-val text-rose">
+                  {QUIZ_QUESTIONS.filter((q) => userAnswers[q.id] && userAnswers[q.id] !== q.correct).length}
+                </span>
+                <span className="summary-lbl">Səhv Cavab</span>
+              </div>
+              <div className="summary-box">
+                <span className="summary-val text-primary">
+                  {weakCategories.length}
+                </span>
+                <span className="summary-lbl">Zəif Alt-mövzu</span>
               </div>
             </div>
 
-            <div className="results-actions">
-              {stats.wrong > 0 && (
-                <button className="btn-primary" onClick={handleRetestWrong}>
-                  Yalnız Səhvləri Təkrar İşlə ({stats.wrong})
-                </button>
-              )}
+            {/* Weak Points Warning Banner */}
+            {weakCategories.length > 0 ? (
+              <div className="alert-box alert-warning">
+                <div className="alert-header">
+                  <strong>DİQQƏT: {weakCategories.length} mövzuda təhlükəli zəiflik aşkar edildi!</strong>
+                </div>
+                <p>MİQ imtahanında maksimum bal yığmaq üçün aşağıdakı dərslik səhifələrini mütləq təkrar oxuyun:</p>
+                <ul className="remedy-bullets">
+                  {weakCategories.map((wc) => (
+                    <li key={wc.name}>
+                      <strong>{wc.name} ({wc.percentage}%):</strong>
+                      <div className="remedy-tags">
+                        {wc.remedyList.length > 0 ? (
+                          wc.remedyList.map((r, idx) => (
+                            <span key={idx} className="remedy-pill">Kitab: {r}</span>
+                          ))
+                        ) : (
+                          <span className="remedy-pill">Bu mövzudan olan sualları təkrar işləyin</span>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : Object.keys(userAnswers).length >= 10 ? (
+              <div className="alert-box alert-success">
+                <strong>ƏLA NƏTİCƏ!</strong> Mövzular üzrə nəticələriniz yüksəkdir. Zəif boşluq qalmayıb.
+              </div>
+            ) : (
+              <div className="alert-box alert-info">
+                Analizin tam dəqiq olması üçün 20 sualın ən azı 10-nu cavablandırmağınız tövsiyə olunur.
+              </div>
+            )}
+
+            {/* Sub-topics Breakdown List */}
+            <h3 className="section-subtitle">Alt-mövzular üzrə İncəliklərinə Qədər Analiz</h3>
+            <div className="category-list">
+              {categoryAnalytics.map((cat) => (
+                <div key={cat.name} className={`cat-card cat-status-${cat.status}`}>
+                  <div className="cat-header">
+                    <div>
+                      <h4 className="cat-title">{cat.name}</h4>
+                      <span className="cat-meta">
+                        {cat.total} sual • {cat.answered} işlənilib ({cat.correct} düz, {cat.wrong} səhv)
+                      </span>
+                    </div>
+                    <div className="cat-score-badge">
+                      <span className="cat-pct">{cat.percentage}%</span>
+                      <span className="cat-badge-lbl">{cat.statusLabel}</span>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="cat-bar-bg">
+                    <div
+                      className={`cat-bar-fill fill-${cat.status}`}
+                      style={{ width: `${cat.percentage}%` }}
+                    />
+                  </div>
+
+                  {/* Remedial book prescription if wrong */}
+                  {cat.remedyList.length > 0 && (
+                    <div className="cat-prescription">
+                      <span className="presc-label">Tövsiyə edilən dərslik:</span>
+                      {cat.remedyList.map((bk, i) => (
+                        <span key={i} className="presc-book">{bk}</span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Targeted Drill Action */}
+                  <div className="cat-actions">
+                    <button
+                      className="btn-drill"
+                      onClick={() => handleFilterByCategory(cat.name)}
+                    >
+                      Bu Alt-mövzunu Təkrar Məşq Et ({cat.total} Sual) →
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="analytics-footer-actions">
               <button
-                className="btn-secondary"
+                className="btn-primary"
                 onClick={() => {
-                  setExamSubmitted(false);
-                  setCurrentIndex(0);
                   setMode('study');
+                  setQuestions(QUIZ_QUESTIONS);
+                  setActiveCategoryFilter('all');
                 }}
               >
-                İzahları Addım-addım Oxu
+                Bütün Testləri İşləməyə Qayıt
               </button>
-              <button className="btn-secondary" onClick={handleShuffle}>
-                Yeni İmtahana Başla
+              <button className="btn-secondary" onClick={handleReset}>
+                Analiz Məlumatlarını Sıfırla
               </button>
             </div>
           </div>
         ) : (
-          /* Active Question View */
-          currentQ && (
-            <div className="question-card">
-              <div className="q-meta-row">
-                <span className="q-badge">MİQ Qiymətləndirmə Çərçivəsi</span>
-                <span className="q-index-tag">Sual #{currentIndex + 1}</span>
+          /* VIEW 2: QUIZ / EXAM INTERFACE */
+          <>
+            {/* Navigation Quick Bar */}
+            <div className="control-strip">
+              <div className="q-nav-status">
+                <span>Sual <strong>{currentIndex + 1}</strong> / {questions.length}</span>
+                <span className="status-dot">•</span>
+                <span>Cavablanan: {Object.keys(userAnswers).length}</span>
               </div>
 
-              <h2 className="question-text">{currentQ.question}</h2>
-
-              {/* Options List */}
-              <div className="options-list">
-                {currentQ.options.map((opt) => {
-                  const letter = opt.substring(0, 1);
-                  const isSelected = userAnswers[currentQ.id] === letter;
-                  const isCorrect = letter === currentQ.correct;
-
-                  let optClass = 'opt-default';
-                  if (isSelected) optClass += ' opt-selected';
-
-                  if (mode === 'study' && isSelected) {
-                    optClass += isCorrect ? ' opt-correct' : ' opt-wrong';
-                  } else if (mode === 'study' && userAnswers[currentQ.id] && isCorrect) {
-                    optClass += ' opt-revealed-correct';
-                  }
-
-                  return (
-                    <button
-                      key={letter}
-                      className={`option-btn ${optClass}`}
-                      onClick={() => handleSelectOption(currentQ.id, letter)}
-                    >
-                      <span className="opt-letter">{letter}</span>
-                      <span className="opt-text">{opt.substring(3)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Explanation Card (Study mode on answer, or button click) */}
-              {(mode === 'study' && (showExplanation[currentQ.id] || userAnswers[currentQ.id])) && (
-                <div className={`explanation-box ${userAnswers[currentQ.id] === currentQ.correct ? 'exp-pass' : 'exp-fail'}`}>
-                  <div className="exp-status-line">
-                    <span className="exp-badge">
-                      {userAnswers[currentQ.id] === currentQ.correct
-                        ? 'Düzgün Cavab: ' + currentQ.correct
-                        : 'Düzgün Cavab: ' + currentQ.correct + ' (Seçiminiz: ' + (userAnswers[currentQ.id] || 'Yoxdur') + ')'}
-                    </span>
-                  </div>
-                  <p className="exp-body">{currentQ.explanation}</p>
-                  <div className="exp-source">
-                    <strong>Rəsmi Dərslik Mənbəsi:</strong> {currentQ.source}
-                  </div>
-                </div>
-              )}
-
-              {/* Footer Controls */}
-              <div className="q-footer-nav">
+              <div className="action-buttons">
                 <button
-                  className="btn-nav"
-                  disabled={currentIndex === 0}
-                  onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+                  className="btn-secondary"
+                  onClick={() => setShowQuestionDrawer(!showQuestionDrawer)}
                 >
-                  ← Əvvəlki
+                  Sualların Siyahısı
                 </button>
-
-                {mode === 'exam' && (
-                  <button
-                    className="btn-finish-exam"
-                    onClick={() => {
-                      if (window.confirm('İmtahanı bitirmək istədiyinizdən əminsiniz?')) {
-                        setExamSubmitted(true);
-                      }
-                    }}
-                  >
-                    İmtahanı Bitir
-                  </button>
-                )}
-
-                <button
-                  className="btn-nav btn-nav-primary"
-                  disabled={currentIndex === questions.length - 1}
-                  onClick={() => setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1))}
-                >
-                  Növbəti →
+                <button className="btn-secondary" onClick={handleShuffle}>
+                  Qarışdır
+                </button>
+                <button className="btn-secondary" onClick={handleReset}>
+                  Sıfırla
                 </button>
               </div>
             </div>
-          )
+
+            {/* Question Selector Drawer (Collapsible) */}
+            {showQuestionDrawer && (
+              <div className="drawer-card">
+                <div className="drawer-header">
+                  <span>Bütün Suallar üzrə Naviqasiya:</span>
+                  <button className="btn-close" onClick={() => setShowQuestionDrawer(false)}>✕</button>
+                </div>
+                <div className="q-grid">
+                  {questions.map((q, idx) => {
+                    const ans = userAnswers[q.id];
+                    let statusClass = 'unanswered';
+                    if (ans) {
+                      if (mode === 'study' || examSubmitted) {
+                        statusClass = ans === q.correct ? 'correct' : 'wrong';
+                      } else {
+                        statusClass = 'answered';
+                      }
+                    }
+                    const isCurrent = idx === currentIndex;
+                    return (
+                      <button
+                        key={q.id}
+                        className={`q-grid-btn ${statusClass} ${isCurrent ? 'current' : ''}`}
+                        onClick={() => {
+                          setCurrentIndex(idx);
+                          setShowQuestionDrawer(false);
+                        }}
+                      >
+                        {idx + 1}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Exam Result View */}
+            {mode === 'exam' && examSubmitted ? (
+              <div className="results-card">
+                <div className="results-header">
+                  <span className="results-pill">Sınaq Nəticəsi</span>
+                  <h2 className="results-score">{stats.percentage}%</h2>
+                  <p className="results-subtitle">
+                    20 testdən <strong>{stats.correct}</strong> düzgün cavab topladınız.
+                  </p>
+                </div>
+
+                <div className="stats-row">
+                  <div className="stat-box stat-correct">
+                    <span className="stat-num">{stats.correct}</span>
+                    <span className="stat-lbl">Düzgün</span>
+                  </div>
+                  <div className="stat-box stat-wrong">
+                    <span className="stat-num">{stats.wrong}</span>
+                    <span className="stat-lbl">Səhv</span>
+                  </div>
+                  <div className="stat-box stat-empty">
+                    <span className="stat-num">{stats.unanswered}</span>
+                    <span className="stat-lbl">Boş</span>
+                  </div>
+                </div>
+
+                {/* Instant Diagnostics Preview */}
+                <div className="exam-diagnostic-banner">
+                  <span className="diag-heading">Diaqnostik İpucu:</span>
+                  <p>
+                    {stats.wrong > 0
+                      ? `${stats.wrong} səhviniz qeydə alındı. Dərslik boşluqlarınızı görmək üçün «Diaqnostik Analiz» bölməsinə keçin.`
+                      : 'Mükəmməl nəticə! 20-də 20 doğru cavab verdiniz!'}
+                  </p>
+                </div>
+
+                <div className="results-actions">
+                  {stats.wrong > 0 && (
+                    <button className="btn-primary" onClick={handleRetestWrong}>
+                      Yalnız Səhvləri Təkrar İşlə ({stats.wrong})
+                    </button>
+                  )}
+                  <button
+                    className="btn-secondary"
+                    onClick={() => setMode('analytics')}
+                  >
+                    Zəif Mövzular Analizinə Bax
+                  </button>
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      setExamSubmitted(false);
+                      setCurrentIndex(0);
+                      setMode('study');
+                    }}
+                  >
+                    İzahları Addım-addım Oxu
+                  </button>
+                  <button className="btn-secondary" onClick={handleShuffle}>
+                    Yeni İmtahana Başla
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Active Question View */
+              currentQ && (
+                <div className="question-card">
+                  <div className="q-meta-row">
+                    <div className="q-meta-left">
+                      <span className="q-badge">MİQ Qiymətləndirmə Çərçivəsi</span>
+                      <span className="q-category-tag">{currentQ.category}</span>
+                    </div>
+                    <span className="q-index-tag">Sual #{currentIndex + 1}</span>
+                  </div>
+
+                  <h2 className="question-text">{currentQ.question}</h2>
+
+                  {/* Options List */}
+                  <div className="options-list">
+                    {currentQ.options.map((opt) => {
+                      const letter = opt.substring(0, 1);
+                      const isSelected = userAnswers[currentQ.id] === letter;
+                      const isCorrect = letter === currentQ.correct;
+
+                      let optClass = 'opt-default';
+                      if (isSelected) optClass += ' opt-selected';
+
+                      if (mode === 'study' && isSelected) {
+                        optClass += isCorrect ? ' opt-correct' : ' opt-wrong';
+                      } else if (mode === 'study' && userAnswers[currentQ.id] && isCorrect) {
+                        optClass += ' opt-revealed-correct';
+                      }
+
+                      return (
+                        <button
+                          key={letter}
+                          className={`option-btn ${optClass}`}
+                          onClick={() => handleSelectOption(currentQ.id, letter)}
+                        >
+                          <span className="opt-letter">{letter}</span>
+                          <span className="opt-text">{opt.substring(3)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Explanation Card */}
+                  {(mode === 'study' && (showExplanation[currentQ.id] || userAnswers[currentQ.id])) && (
+                    <div className={`explanation-box ${userAnswers[currentQ.id] === currentQ.correct ? 'exp-pass' : 'exp-fail'}`}>
+                      <div className="exp-status-line">
+                        <span className="exp-badge">
+                          {userAnswers[currentQ.id] === currentQ.correct
+                            ? 'Düzgün Cavab: ' + currentQ.correct
+                            : 'Düzgün Cavab: ' + currentQ.correct + ' (Seçiminiz: ' + (userAnswers[currentQ.id] || 'Yoxdur') + ')'}
+                        </span>
+                      </div>
+                      <p className="exp-body">{currentQ.explanation}</p>
+                      <div className="exp-source">
+                        <strong>Rəsmi Dərslik Mənbəsi:</strong> {currentQ.source}
+                      </div>
+                      {currentQ.remedyBook && userAnswers[currentQ.id] !== currentQ.correct && (
+                        <div className="exp-remedy-note">
+                          <strong>MİQ İpucu:</strong> Bu sualda səhv etdinizsə, <em>{currentQ.remedyBook}</em> hissəsini dərhal təkrar oxuyun.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Footer Controls */}
+                  <div className="q-footer-nav">
+                    <button
+                      className="btn-nav"
+                      disabled={currentIndex === 0}
+                      onClick={() => setCurrentIndex((prev) => Math.max(0, prev - 1))}
+                    >
+                      ← Əvvəlki
+                    </button>
+
+                    {mode === 'exam' && (
+                      <button
+                        className="btn-finish-exam"
+                        onClick={() => {
+                          if (window.confirm('İmtahanı bitirmək istədiyinizdən əminsiniz?')) {
+                            setExamSubmitted(true);
+                          }
+                        }}
+                      >
+                        İmtahanı Bitir
+                      </button>
+                    )}
+
+                    <button
+                      className="btn-nav btn-nav-primary"
+                      disabled={currentIndex === questions.length - 1}
+                      onClick={() => setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1))}
+                    >
+                      Növbəti →
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+          </>
         )}
       </main>
 
       {/* Footer */}
       <footer className="main-footer">
-        <p>© 2026 Yusif Vahabzadə • Coğrafiya MİQ Hazırlığı üzrə İnteraktiv Tədris Sistemi</p>
+        <p>© 2026 Yusif Vahabzadə • Coğrafiya MİQ Hazırlığı üzrə Ağıllı Analiz və Test Sistemi</p>
         <p className="footer-sub">
           Mənbələr: 6, 7, 8, 9, 10 və 11-ci sinif Coğrafiya dərslikləri və Metodik vəsaitləri əsasında hazırlanmışdır.
         </p>
