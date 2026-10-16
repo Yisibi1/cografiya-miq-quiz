@@ -1260,3 +1260,313 @@ body {
     text-align: center;
   }
 }
+
+/* ========================================= */
+/* VARIANT SELECTION HUB & SWITCHER STYLES   */
+/* ========================================= */
+.variant-hub-screen {
+  max-width: 900px;
+  margin: 0 auto;
+}
+.variant-hub-header {
+  margin-bottom: 20px;
+}
+.variant-hub-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-main);
+  margin: 8px 0 6px;
+  letter-spacing: -0.3px;
+}
+.variant-hub-desc {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.variant-overall-progress {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+.variant-overall-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.variant-overall-stats {
+  font-weight: 700;
+  color: var(--primary-hover);
+}
+
+.variants-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-bottom: 24px;
+}
+@media (max-width: 768px) {
+  .variants-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.variant-card {
+  background: #ffffff;
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+.variant-card:hover {
+  border-color: #93c5fd;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px -2px rgba(0, 0, 0, 0.06);
+}
+.variant-card-strip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+}
+.strip-a { background: #0284c7; }
+.strip-b { background: #059669; }
+.strip-c { background: #d97706; }
+.strip-d { background: #7c3aed; }
+
+.variant-top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.variant-badge-pill {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+.pill-a { background: #e0f2fe; color: #0284c7; }
+.pill-b { background: #dcfce7; color: #059669; }
+.pill-c { background: #fef3c7; color: #d97706; }
+.pill-d { background: #f3e8ff; color: #7c3aed; }
+
+.variant-q-count {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.variant-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-main);
+  margin-bottom: 8px;
+  line-height: 1.3;
+}
+.variant-summary-text {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin-bottom: 14px;
+  flex: 1;
+}
+
+.variant-card-progress {
+  background: #f8fafc;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+.variant-progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  margin-bottom: 6px;
+}
+.variant-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.btn-variant-study {
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+.btn-variant-study:hover {
+  background: var(--primary-hover);
+}
+.btn-variant-exam {
+  background: #f8fafc;
+  border: 1px solid var(--border-mid);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+.btn-variant-exam:hover {
+  background: #e2e8f0;
+}
+
+/* Mega Card & Full 80 */
+.mega-variant-card {
+  background: linear-gradient(135deg, #f0fdf4 0%, #e0f2fe 100%);
+  border: 1px solid #bae6fd;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.mega-info {
+  flex: 1;
+  min-width: 260px;
+}
+.mega-badge {
+  display: inline-block;
+  background: #0284c7;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.mega-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 4px;
+}
+.mega-desc {
+  font-size: 12.5px;
+  color: #334155;
+  line-height: 1.4;
+}
+.mega-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.btn-mega-exam {
+  background: #0284c7;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 18px;
+  border-radius: 7px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-mega-exam:hover {
+  background: #0369a1;
+}
+.btn-mega-all {
+  background: #ffffff;
+  border: 1px solid #7dd3fc;
+  color: #0369a1;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 10px 16px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-mega-all:hover {
+  background: #f0f9ff;
+}
+
+/* Variant Switcher inside Quiz */
+.quiz-variant-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 12px;
+  scrollbar-width: thin;
+}
+.quiz-variant-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-right: 4px;
+}
+.btn-variant-pill {
+  background: #ffffff;
+  border: 1px solid var(--border-mid);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.btn-variant-pill:hover {
+  background: #f1f5f9;
+}
+.btn-variant-pill.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+/* Topic Card mini variant chips */
+.variant-chips-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 10px;
+  margin-bottom: 12px;
+}
+.v-chip {
+  background: #f1f5f9;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  padding: 4px 6px;
+  text-align: center;
+  font-size: 11px;
+}
+.v-chip-label {
+  font-weight: 700;
+  color: var(--text-main);
+  display: block;
+}
+.v-chip-val {
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
