@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { QUIZ_QUESTIONS } from './data/quizQuestions';
 import { TOPICS_CATALOG } from './data/topicsData';
+import { teacherQuizzesTopic1 } from './data/teacherQuizzes';
+
+const ALL_TEACHER_QUESTIONS = teacherQuizzesTopic1.flatMap((qGroup) => qGroup.questions);
 
 function shuffleArray(array) {
   const arr = [...array];
@@ -53,7 +56,11 @@ const VARIANTS_META = [
 export default function App() {
   // Topic selection: null = Catalog; '1.1' = Mövzu 1.1
   const [selectedTopicId, setSelectedTopicId] = useState(null);
-  // Variant selection: null = Variant Selection Screen; 'A' | 'B' | 'C' | 'D' | 'ALL' | 'MEGA'
+  // Active tab in Hub: 'textbook' (80 Qs) | 'teacher' (165 Google Forms Qs)
+  const [hubTab, setHubTab] = useState('textbook');
+  // Variant selection: null = Variant Selection Screen;
+  // Textbook: 'A' | 'B' | 'C' | 'D' | 'ALL' | 'MEGA'
+  // Teacher Google Forms: 'GF-1' | 'GF-2' | 'GF-3' | 'GF-4' | 'GF-ALL' | 'GF-MEGA'
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [mode, setMode] = useState('study'); // 'study' | 'exam' | 'analytics'
   const [questions, setQuestions] = useState(QUIZ_QUESTIONS);
@@ -71,6 +78,8 @@ export default function App() {
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [showQuestionDrawer, setShowQuestionDrawer] = useState(false);
   const [activeCategoryFilter, setActiveCategoryFilter] = useState('all');
+
+  const isTeacherVariant = selectedVariant && selectedVariant.startsWith('GF-');
 
   // Save to localStorage
   useEffect(() => {
@@ -101,6 +110,17 @@ export default function App() {
 
   const currentQ = questions[currentIndex];
 
+  const getBaseListForVariant = (varCode) => {
+    if (!varCode) return QUIZ_QUESTIONS;
+    if (varCode === 'ALL') return QUIZ_QUESTIONS;
+    if (varCode === 'GF-ALL') return ALL_TEACHER_QUESTIONS;
+    if (varCode.startsWith('GF-')) {
+      const found = teacherQuizzesTopic1.find((tq) => tq.shortCode === varCode);
+      return found ? found.questions : ALL_TEACHER_QUESTIONS;
+    }
+    return QUIZ_QUESTIONS.filter((q) => q.variant === varCode);
+  };
+
   const handleSelectVariant = (varCode, requestedMode = 'study') => {
     setSelectedVariant(varCode);
     setMode(requestedMode);
@@ -108,6 +128,12 @@ export default function App() {
     setExamSubmitted(false);
     setActiveCategoryFilter('all');
     setShowExplanation({});
+
+    if (varCode.startsWith('GF-')) {
+      setHubTab('teacher');
+    } else {
+      setHubTab('textbook');
+    }
 
     if (varCode === 'ALL') {
       setQuestions(QUIZ_QUESTIONS);
@@ -121,6 +147,19 @@ export default function App() {
       setQuestions(mega);
       setTimeLeft(25 * 60);
       setMode('exam');
+    } else if (varCode === 'GF-ALL') {
+      setQuestions(ALL_TEACHER_QUESTIONS);
+      setTimeLeft(180 * 60);
+    } else if (varCode === 'GF-MEGA') {
+      const mixed = shuffleArray(ALL_TEACHER_QUESTIONS).slice(0, 25);
+      setQuestions(mixed);
+      setTimeLeft(30 * 60);
+      setMode('exam');
+    } else if (varCode.startsWith('GF-')) {
+      const found = teacherQuizzesTopic1.find((tq) => tq.shortCode === varCode);
+      const list = found ? found.questions : ALL_TEACHER_QUESTIONS;
+      setQuestions(list);
+      setTimeLeft(Math.max(30, list.length) * 60);
     } else {
       const varQs = QUIZ_QUESTIONS.filter((q) => q.variant === varCode);
       setQuestions(varQs);
@@ -137,10 +176,7 @@ export default function App() {
   };
 
   const handleShuffle = () => {
-    let baseList = QUIZ_QUESTIONS;
-    if (selectedVariant && selectedVariant !== 'ALL' && selectedVariant !== 'MEGA') {
-      baseList = QUIZ_QUESTIONS.filter((q) => q.variant === selectedVariant);
-    }
+    const baseList = getBaseListForVariant(selectedVariant);
     const shuffled = shuffleArray(baseList);
     setQuestions(shuffled);
     setCurrentIndex(0);
@@ -157,21 +193,14 @@ export default function App() {
       setExamSubmitted(false);
       setTimeLeft(25 * 60);
       setCurrentIndex(0);
-      if (selectedVariant && selectedVariant !== 'ALL' && selectedVariant !== 'MEGA') {
-        setQuestions(QUIZ_QUESTIONS.filter((q) => q.variant === selectedVariant));
-      } else {
-        setQuestions(QUIZ_QUESTIONS);
-      }
+      setQuestions(getBaseListForVariant(selectedVariant));
       setActiveCategoryFilter('all');
       localStorage.removeItem('miq_user_answers_1_1');
     }
   };
 
   const handleRetestWrong = () => {
-    let sourceList = QUIZ_QUESTIONS;
-    if (selectedVariant && selectedVariant !== 'ALL' && selectedVariant !== 'MEGA') {
-      sourceList = QUIZ_QUESTIONS.filter((q) => q.variant === selectedVariant);
-    }
+    const sourceList = getBaseListForVariant(selectedVariant);
     const wrongQs = sourceList.filter((q) => userAnswers[q.id] && userAnswers[q.id] !== q.correct);
     if (wrongQs.length === 0) return;
     setQuestions(wrongQs);
@@ -190,11 +219,7 @@ export default function App() {
   };
 
   const handleResetFilter = () => {
-    if (selectedVariant && selectedVariant !== 'ALL' && selectedVariant !== 'MEGA') {
-      setQuestions(QUIZ_QUESTIONS.filter((q) => q.variant === selectedVariant));
-    } else {
-      setQuestions(QUIZ_QUESTIONS);
-    }
+    setQuestions(getBaseListForVariant(selectedVariant));
     setCurrentIndex(0);
     setActiveCategoryFilter('all');
   };
@@ -218,7 +243,7 @@ export default function App() {
     return { correct, wrong, unanswered, percentage };
   }, [questions, userAnswers]);
 
-  // Topic 1.1 Category Analytics across all 80 questions
+  // Topic 1.1 Category Analytics across all 80 textbook questions
   const categoryAnalytics = useMemo(() => {
     const catMap = {};
     QUIZ_QUESTIONS.forEach((q) => {
@@ -281,7 +306,7 @@ export default function App() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Variant stats
+  // Textbook Variant stats (A, B, C, D)
   const variantStats = useMemo(() => {
     const res = {};
     ['A', 'B', 'C', 'D'].forEach((v) => {
@@ -294,10 +319,41 @@ export default function App() {
     return res;
   }, [userAnswers]);
 
-  // Overall 1.1 progress
-  const totalAnsweredCount = Object.keys(userAnswers).length;
+  // Teacher Google Forms stats (GF-1, GF-2, GF-3, GF-4)
+  const teacherStats = useMemo(() => {
+    const res = {};
+    teacherQuizzesTopic1.forEach((tq) => {
+      const ansCount = tq.questions.filter((q) => userAnswers[q.id]).length;
+      const corCount = tq.questions.filter((q) => userAnswers[q.id] === q.correct).length;
+      const pct = ansCount > 0 ? Math.round((corCount / tq.questionCount) * 100) : 0;
+      res[tq.shortCode] = { answered: ansCount, correct: corCount, pct, total: tq.questionCount };
+    });
+    return res;
+  }, [userAnswers]);
+
+  // Overall Textbook 1.1 progress (80 Qs)
+  const totalAnsweredCount = QUIZ_QUESTIONS.filter((q) => userAnswers[q.id]).length;
   const totalCorrectCount = QUIZ_QUESTIONS.filter((q) => userAnswers[q.id] === q.correct).length;
   const totalAccuracyPct = totalAnsweredCount > 0 ? Math.round((totalCorrectCount / QUIZ_QUESTIONS.length) * 100) : 0;
+
+  // Overall Teacher 1.1 progress (165 Qs)
+  const teacherAnsweredCount = ALL_TEACHER_QUESTIONS.filter((q) => userAnswers[q.id]).length;
+  const teacherCorrectCount = ALL_TEACHER_QUESTIONS.filter((q) => userAnswers[q.id] === q.correct).length;
+  const teacherAccuracyPct = teacherAnsweredCount > 0 ? Math.round((teacherCorrectCount / ALL_TEACHER_QUESTIONS.length) * 100) : 0;
+
+  const getHeaderSubtitle = () => {
+    if (!selectedTopicId) return 'MİQ Coğrafiya Mövzu Portalı';
+    if (selectedVariant === null) return 'Mövzu 1.1: Coğrafi Kəşflər və Tədqiqatlar';
+    if (selectedVariant === 'ALL') return 'Mövzu 1.1 • Dərslik Bazası (Bütün 80 Sual)';
+    if (selectedVariant === 'MEGA') return 'Mövzu 1.1 • Dərslik Mega Sınaq (20 Sual)';
+    if (selectedVariant === 'GF-ALL') return 'Mövzu 1.1 • Müəllim Bazası (Bütün 165 Sual)';
+    if (selectedVariant === 'GF-MEGA') return 'Mövzu 1.1 • Qarışıq Müəllim Sınağı (25 Sual)';
+    if (selectedVariant.startsWith('GF-')) {
+      const found = teacherQuizzesTopic1.find((tq) => tq.shortCode === selectedVariant);
+      return found ? `Müəllim Sınağı • ${found.title}` : `Müəllim Sınağı • ${selectedVariant}`;
+    }
+    return `Mövzu 1.1 • Variant ${selectedVariant}`;
+  };
 
   return (
     <div className="app-container">
@@ -316,26 +372,14 @@ export default function App() {
                   }
                 }}
               >
-                {selectedVariant !== null ? '← Variant Seçiminə Qayıt' : '← Mövzu Seçiminə Qayıt'}
+                {selectedVariant !== null ? '← Sınaq və Variant Seçiminə Qayıt' : '← Mövzu Seçiminə Qayıt'}
               </button>
             ) : (
               <span className="badge-academic">MİQ Coğrafiya • Tədris Portalı</span>
             )}
-            <h1 className="header-title">
-              {!selectedTopicId
-                ? 'MİQ Coğrafiya Mövzu Portalı'
-                : selectedVariant === null
-                ? 'Mövzu 1.1: Coğrafi Kəşflər və Tədqiqatlar'
-                : `Mövzu 1.1 • ${
-                    selectedVariant === 'ALL'
-                      ? 'Bütün 80 Sual'
-                      : selectedVariant === 'MEGA'
-                      ? 'Mega Sınaq (20 Sual)'
-                      : `Variant ${selectedVariant}`
-                  }`}
-            </h1>
+            <h1 className="header-title">{getHeaderSubtitle()}</h1>
             <p className="author-tag">
-              Müəllif: <strong>Yusif Vahabzadə</strong> • 6–11-ci Sinif Dərslik və Metodik İzah Sistemi
+              Müəllif: <strong>Yusif Vahabzadə</strong> • 6–11-ci Sinif Dərslik Bazası (80 Sual) + Müəllim Google Forms Bazası (165 Sual)
             </p>
           </div>
 
@@ -348,7 +392,7 @@ export default function App() {
                     setMode('study');
                     setExamSubmitted(false);
                     if (selectedVariant === null) {
-                      handleSelectVariant('A', 'study');
+                      handleSelectVariant(hubTab === 'teacher' ? 'GF-1' : 'A', 'study');
                     }
                   }}
                 >
@@ -360,7 +404,7 @@ export default function App() {
                     setMode('exam');
                     setExamSubmitted(false);
                     if (selectedVariant === null) {
-                      handleSelectVariant('A', 'exam');
+                      handleSelectVariant(hubTab === 'teacher' ? 'GF-1' : 'A', 'exam');
                     }
                   }}
                 >
@@ -407,8 +451,8 @@ export default function App() {
               <span className="badge-pill">MİQ Qiymətləndirmə Çərçivəsi</span>
               <h2 className="catalog-main-title">İşləmək İstədiyiniz Mövzunu Seçin</h2>
               <p className="catalog-subtitle">
-                MİQ imtahanında ən yüksək nəticə əldə etmək üçün mövzuları ardıcıllıqla işləyin. Hər mövzuda
-                dərsliklərin ən incə detallarını əhatə edən variantlar və fərdi zəif nöqtələr diaqnostikası mövcuddur.
+                Hər mövzu üzrə həm bizim dərslik əsaslı 80 suallıq 4 Variant bazamız, həm də ayrıca bölmədə
+                Müəllimin Google Forms sınaqları (şəkilli xəritə və sxem sualları ilə birlikdə) yerləşdirilmişdir.
               </p>
             </div>
 
@@ -425,7 +469,7 @@ export default function App() {
                       <span className="topic-code-badge">{top.topicCode}</span>
                     </div>
                     {top.active ? (
-                      <span className="topic-status-pill status-ready">Hazır • {top.questionCount} Sual (4 Variant)</span>
+                      <span className="topic-status-pill status-ready">Hazır • 80 Dərslik + 165 Müəllim Sualı</span>
                     ) : (
                       <span className="topic-status-pill status-soon">{top.badge || 'Tezliklə'}</span>
                     )}
@@ -440,33 +484,35 @@ export default function App() {
                     <>
                       <div className="variant-chips-row">
                         <div className="v-chip">
-                          <span className="v-chip-label">Var A</span>
-                          <span className="v-chip-val">{variantStats.A.answered}/20</span>
+                          <span className="v-chip-label">Dərslik (A-D)</span>
+                          <span className="v-chip-val">{totalAnsweredCount}/80</span>
                         </div>
                         <div className="v-chip">
-                          <span className="v-chip-label">Var B</span>
-                          <span className="v-chip-val">{variantStats.B.answered}/20</span>
+                          <span className="v-chip-label">Sınaq 1 (Dərs)</span>
+                          <span className="v-chip-val">{teacherStats['GF-1'].answered}/50</span>
                         </div>
                         <div className="v-chip">
-                          <span className="v-chip-label">Var C</span>
-                          <span className="v-chip-val">{variantStats.C.answered}/20</span>
+                          <span className="v-chip-label">I Hissə</span>
+                          <span className="v-chip-val">{teacherStats['GF-2'].answered}/43</span>
                         </div>
                         <div className="v-chip">
-                          <span className="v-chip-label">Var D</span>
-                          <span className="v-chip-val">{variantStats.D.answered}/20</span>
+                          <span className="v-chip-label">II–III Hissə</span>
+                          <span className="v-chip-val">{teacherStats['GF-3'].answered + teacherStats['GF-4'].answered}/72</span>
                         </div>
                       </div>
 
-                      {totalAnsweredCount > 0 && (
+                      {(totalAnsweredCount > 0 || teacherAnsweredCount > 0) && (
                         <div className="topic-user-progress">
                           <div className="progress-label-row">
-                            <span>Ümumi İrəliləyiş: <strong>{totalAnsweredCount} / 80</strong> sual</span>
-                            <span className="progress-pct-bold">{totalAccuracyPct}% Düzgün</span>
+                            <span>Cəmi İşlənən: <strong>{totalAnsweredCount + teacherAnsweredCount} / 245</strong> sual</span>
+                            <span className="progress-pct-bold">
+                              Dərslik: {totalAccuracyPct}% • Müəllim: {teacherAccuracyPct}%
+                            </span>
                           </div>
                           <div className="progress-mini-bar">
                             <div
                               className="progress-mini-fill"
-                              style={{ width: `${(totalAnsweredCount / 80) * 100}%` }}
+                              style={{ width: `${((totalAnsweredCount + teacherAnsweredCount) / 245) * 100}%` }}
                             />
                           </div>
                         </div>
@@ -482,19 +528,21 @@ export default function App() {
                           className="btn-topic-primary"
                           onClick={() => {
                             setSelectedTopicId(top.id);
+                            setHubTab('textbook');
                             setSelectedVariant(null);
                           }}
                         >
-                          Variant Seçimi (80 Sual) →
+                          Əsas Baza (80 Sual) →
                         </button>
                         <button
-                          className="btn-topic-secondary"
+                          className="btn-topic-teacher"
                           onClick={() => {
                             setSelectedTopicId(top.id);
-                            setMode('analytics');
+                            setHubTab('teacher');
+                            setSelectedVariant(null);
                           }}
                         >
-                          Diaqnostik Analiz
+                          Müəllim Sınaqları (165 Sual) →
                         </button>
                       </>
                     ) : (
@@ -516,27 +564,25 @@ export default function App() {
               <span className="badge-pill">Fərdi MİQ Diaqnostika Mərkəzi</span>
               <h2 className="analytics-title">Mövzu 1.1 üzrə Biliklərinizin Dəqiq Xəritəsi</h2>
               <p className="analytics-desc">
-                Sistem bütün 80 testin alt-mövzularını təhlil edərək MİQ imtahanında ən çox hansı hissədən bal
-                itirmə təhlükənizin olduğunu və hansı dərslik səhifələrini oxumalı olduğunuzu müəyyən edir.
+                Sistem dərslik bazasındakı 80 testin və Müəllimin 165 Google Forms sualının nəticələrini təhlil edərək
+                MİQ imtahanında ən çox hansı hissədən bal itirmə təhlükənizin olduğunu göstərir.
               </p>
             </div>
 
             <div className="analytics-summary-grid">
               <div className="summary-box">
-                <span className="summary-val">{totalAnsweredCount} / {QUIZ_QUESTIONS.length}</span>
-                <span className="summary-lbl">İşlənən Suallar</span>
+                <span className="summary-val">{totalAnsweredCount} / 80</span>
+                <span className="summary-lbl">Əsas Dərslik Bazası</span>
+              </div>
+              <div className="summary-box">
+                <span className="summary-val">{teacherAnsweredCount} / 165</span>
+                <span className="summary-lbl">Müəllim Sınaqları (GF)</span>
               </div>
               <div className="summary-box">
                 <span className="summary-val text-emerald">
-                  {totalCorrectCount}
+                  {totalCorrectCount + teacherCorrectCount}
                 </span>
-                <span className="summary-lbl">Düzgün Cavab</span>
-              </div>
-              <div className="summary-box">
-                <span className="summary-val text-rose">
-                  {QUIZ_QUESTIONS.filter((q) => userAnswers[q.id] && userAnswers[q.id] !== q.correct).length}
-                </span>
-                <span className="summary-lbl">Səhv Cavab</span>
+                <span className="summary-lbl">Cəmi Düzgün Cavab</span>
               </div>
               <div className="summary-box">
                 <span className="summary-val text-primary">
@@ -575,7 +621,7 @@ export default function App() {
               </div>
             ) : (
               <div className="alert-box alert-info">
-                Analizin tam dəqiq olması üçün 80 sualın ən azı 20-ni cavablandırmağınız tövsiyə olunur.
+                Analizin tam dəqiq olması üçün ən azı 20 sualı cavablandırmağınız tövsiyə olunur.
               </div>
             )}
 
@@ -630,7 +676,7 @@ export default function App() {
                 onClick={() => {
                   setMode('study');
                   if (selectedVariant === null) {
-                    handleSelectVariant('A', 'study');
+                    handleSelectVariant(hubTab === 'teacher' ? 'GF-1' : 'A', 'study');
                   }
                 }}
               >
@@ -643,138 +689,295 @@ export default function App() {
           </div>
         ) : selectedVariant === null ? (
           /* ======================================================== */
-          /* SCREEN 2: VARIANT SELECTION HUB                          */
+          /* SCREEN 2: VARIANT & TEACHER QUIZ SELECTION HUB           */
           /* ======================================================== */
           <div className="variant-hub-screen">
-            <div className="variant-hub-header">
-              <span className="badge-pill">Mövzu 1.1 • 4 Variant • 80 Sual</span>
-              <h2 className="variant-hub-title">Variant Seçimi və İmtahan Rejimləri</h2>
-              <p className="variant-hub-desc">
-                Hər biri 20 sualdan ibarət 4 müstəqil variant və ya 80 suallıq tam baza ilə dərsliklərin bütün incəliklərini mənimsəyin.
-              </p>
+            {/* Base Switcher Tabs */}
+            <div className="hub-base-tabs">
+              <button
+                className={`hub-tab-btn ${hubTab === 'textbook' ? 'active' : ''}`}
+                onClick={() => setHubTab('textbook')}
+              >
+                <span className="hub-tab-title">Əsas Dərslik Bazası (Bizim Suallar)</span>
+                <span className="hub-tab-sub">4 Variant • 80 Sual ({totalAnsweredCount}/80 işlənilib)</span>
+              </button>
+              <button
+                className={`hub-tab-btn hub-tab-teacher ${hubTab === 'teacher' ? 'active' : ''}`}
+                onClick={() => setHubTab('teacher')}
+              >
+                <span className="hub-tab-title">Müəllim Sınaqları (Google Forms)</span>
+                <span className="hub-tab-sub">4 Sınaq • 165 Sual • 35 Şəkil ({teacherAnsweredCount}/165 işlənilib)</span>
+              </button>
             </div>
 
-            {/* Overall Progress Card */}
-            <div className="variant-overall-progress">
-              <div className="variant-overall-row">
-                <span>Ümumi Mənimsəmə Göstəricisi:</span>
-                <span className="variant-overall-stats">
-                  {totalAnsweredCount} / 80 sual işlənilib ({totalAccuracyPct}% Düzgün)
-                </span>
-              </div>
-              <div className="progress-mini-bar">
-                <div
-                  className="progress-mini-fill"
-                  style={{ width: `${(totalAnsweredCount / 80) * 100}%` }}
-                />
-              </div>
-            </div>
+            {hubTab === 'textbook' ? (
+              <>
+                <div className="variant-hub-header">
+                  <span className="badge-pill">Mövzu 1.1 • Əsas Dərslik Bazası • 80 Sual</span>
+                  <h2 className="variant-hub-title">Dərslik və Metodik Vəsait Variantları (A, B, C, D)</h2>
+                  <p className="variant-hub-desc">
+                    Hər biri 20 sualdan ibarət 4 müstəqil variant və ya 80 suallıq tam baza ilə 6–11-ci sinif dərsliklərinin bütün incəliklərini mənimsəyin.
+                  </p>
+                </div>
 
-            {/* Mega Exam & Full Base Card */}
-            <div className="mega-variant-card">
-              <div className="mega-info">
-                <span className="mega-badge">Qarışıq Mega Sınaq</span>
-                <h3 className="mega-title">Bütün Mövzudan Qarışıq Sınaq və ya Tam Baza</h3>
-                <p className="mega-desc">
-                  İmtahan formatında 4 variantın hər birindən 5 sual seçilərək 20 suallıq real vaxt sınağı (25 dəqiqə),
-                  və ya 80 sualın hamısını ardıcıl öyrənmək üçün Tam Tədris Rejimi.
-                </p>
-              </div>
-              <div className="mega-actions">
-                <button
-                  className="btn-mega-exam"
-                  onClick={() => handleSelectVariant('MEGA', 'exam')}
-                >
-                  Mega Sınaq (20 Sual • 25 Dəq)
-                </button>
-                <button
-                  className="btn-mega-all"
-                  onClick={() => handleSelectVariant('ALL', 'study')}
-                >
-                  Bütün 80 Sualı İşlə
-                </button>
-              </div>
-            </div>
-
-            {/* 4 Variant Cards Grid */}
-            <div className="variants-grid">
-              {VARIANTS_META.map((vm) => {
-                const curStats = variantStats[vm.code];
-                return (
-                  <div key={vm.code} className="variant-card">
-                    <div className={`variant-card-strip ${vm.stripClass}`} />
-                    <div>
-                      <div className="variant-top-row">
-                        <span className={`variant-badge-pill ${vm.pillClass}`}>{vm.name}</span>
-                        <span className="variant-q-count">20 Sual • Q {vm.qRange}</span>
-                      </div>
-                      <h3 className="variant-title">{vm.subtitle}</h3>
-                      <p className="variant-summary-text">{vm.description}</p>
-                    </div>
-
-                    <div>
-                      <div className="variant-card-progress">
-                        <div className="variant-progress-info">
-                          <span>İrəliləyiş: <strong>{curStats.answered} / 20</strong></span>
-                          <span>Düzgün: <strong>{curStats.correct}</strong> ({curStats.pct}%)</span>
-                        </div>
-                        <div className="progress-mini-bar">
-                          <div
-                            className="progress-mini-fill"
-                            style={{ width: `${(curStats.answered / 20) * 100}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="variant-actions">
-                        <button
-                          className="btn-variant-study"
-                          onClick={() => handleSelectVariant(vm.code, 'study')}
-                        >
-                          Təlim Rejimi →
-                        </button>
-                        <button
-                          className="btn-variant-exam"
-                          onClick={() => handleSelectVariant(vm.code, 'exam')}
-                        >
-                          Sınaq (25 Dəq)
-                        </button>
-                      </div>
-                    </div>
+                {/* Overall Progress Card */}
+                <div className="variant-overall-progress">
+                  <div className="variant-overall-row">
+                    <span>Əsas Dərslik Bazası üzrə Mənimsəmə:</span>
+                    <span className="variant-overall-stats">
+                      {totalAnsweredCount} / 80 sual işlənilib ({totalAccuracyPct}% Düzgün)
+                    </span>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="progress-mini-bar">
+                    <div
+                      className="progress-mini-fill"
+                      style={{ width: `${(totalAnsweredCount / 80) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Mega Exam & Full Base Card */}
+                <div className="mega-variant-card">
+                  <div className="mega-info">
+                    <span className="mega-badge">Qarışıq Mega Sınaq</span>
+                    <h3 className="mega-title">Bütün Mövzudan Qarışıq Sınaq və ya Tam Baza</h3>
+                    <p className="mega-desc">
+                      İmtahan formatında 4 variantın hər birindən 5 sual seçilərək 20 suallıq real vaxt sınağı (25 dəqiqə),
+                      və ya 80 sualın hamısını ardıcıl öyrənmək üçün Tam Tədris Rejimi.
+                    </p>
+                  </div>
+                  <div className="mega-actions">
+                    <button
+                      className="btn-mega-exam"
+                      onClick={() => handleSelectVariant('MEGA', 'exam')}
+                    >
+                      Mega Sınaq (20 Sual • 25 Dəq)
+                    </button>
+                    <button
+                      className="btn-mega-all"
+                      onClick={() => handleSelectVariant('ALL', 'study')}
+                    >
+                      Bütün 80 Sualı İşlə
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4 Variant Cards Grid */}
+                <div className="variants-grid">
+                  {VARIANTS_META.map((vm) => {
+                    const curStats = variantStats[vm.code];
+                    return (
+                      <div key={vm.code} className="variant-card">
+                        <div className={`variant-card-strip ${vm.stripClass}`} />
+                        <div>
+                          <div className="variant-top-row">
+                            <span className={`variant-badge-pill ${vm.pillClass}`}>{vm.name}</span>
+                            <span className="variant-q-count">20 Sual • Q {vm.qRange}</span>
+                          </div>
+                          <h3 className="variant-title">{vm.subtitle}</h3>
+                          <p className="variant-summary-text">{vm.description}</p>
+                        </div>
+
+                        <div>
+                          <div className="variant-card-progress">
+                            <div className="variant-progress-info">
+                              <span>İrəliləyiş: <strong>{curStats.answered} / 20</strong></span>
+                              <span>Düzgün: <strong>{curStats.correct}</strong> ({curStats.pct}%)</span>
+                            </div>
+                            <div className="progress-mini-bar">
+                              <div
+                                className="progress-mini-fill"
+                                style={{ width: `${(curStats.answered / 20) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="variant-actions">
+                            <button
+                              className="btn-variant-study"
+                              onClick={() => handleSelectVariant(vm.code, 'study')}
+                            >
+                              Təlim Rejimi →
+                            </button>
+                            <button
+                              className="btn-variant-exam"
+                              onClick={() => handleSelectVariant(vm.code, 'exam')}
+                            >
+                              Sınaq (25 Dəq)
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              /* TEACHER GOOGLE FORMS TAB */
+              <>
+                <div className="variant-hub-header">
+                  <span className="badge-pill badge-pill-teacher">Müəllim Sınaqları • Google Forms Bazası • 165 Sual</span>
+                  <h2 className="variant-hub-title">Mövzu 1.1 üzrə Müəllimin 4 Google Forms Sınağı</h2>
+                  <p className="variant-hub-desc">
+                    WhatsApp dərs qrupunda paylaşılan 4 Google Forms sınağının bütün 165 sualı, 35 xəritə/sxem/cədvəl təsviri,
+                    düzgün cavab açarları və müəllimin dərs qeydlərinə əsaslanan ətraflı izahları.
+                  </p>
+                </div>
+
+                {/* Overall Progress Card for Teacher Quizzes */}
+                <div className="variant-overall-progress">
+                  <div className="variant-overall-row">
+                    <span>Müəllim Sınaqları üzrə Mənimsəmə:</span>
+                    <span className="variant-overall-stats">
+                      {teacherAnsweredCount} / 165 sual işlənilib ({teacherAccuracyPct}% Düzgün)
+                    </span>
+                  </div>
+                  <div className="progress-mini-bar">
+                    <div
+                      className="progress-mini-fill"
+                      style={{ width: `${(teacherAnsweredCount / 165) * 100}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Teacher Mega Card */}
+                <div className="mega-variant-card mega-teacher-card">
+                  <div className="mega-info">
+                    <span className="mega-badge">Google Forms Tam Baza</span>
+                    <h3 className="mega-title">4 Google Forms Sınağının Hamısı (165 Sual) və ya Qarışıq Sınaq</h3>
+                    <p className="mega-desc">
+                      Müəllimin Mövzu 1.1 üzrə tərtib etdiyi bütün 165 sualı ardıcıl təlim rejimində işləyin və ya təsadüfi seçilmiş
+                      25 suallıq vaxtlı sınaq imtahanında özünüzü yoxlayın.
+                    </p>
+                  </div>
+                  <div className="mega-actions">
+                    <button
+                      className="btn-mega-exam"
+                      onClick={() => handleSelectVariant('GF-MEGA', 'exam')}
+                    >
+                      Qarışıq Sınaq (25 Sual • 30 Dəq)
+                    </button>
+                    <button
+                      className="btn-mega-all"
+                      onClick={() => handleSelectVariant('GF-ALL', 'study')}
+                    >
+                      Bütün 165 Sualı İşlə
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4 Google Forms Cards Grid */}
+                <div className="variants-grid">
+                  {teacherQuizzesTopic1.map((tq, idx) => {
+                    const curStats = teacherStats[tq.shortCode];
+                    const stripClasses = ['strip-a', 'strip-b', 'strip-c', 'strip-d'];
+                    const pillClasses = ['pill-a', 'pill-b', 'pill-c', 'pill-d'];
+                    return (
+                      <div key={tq.id} className="variant-card">
+                        <div className={`variant-card-strip ${stripClasses[idx % 4]}`} />
+                        <div>
+                          <div className="variant-top-row">
+                            <span className={`variant-badge-pill ${pillClasses[idx % 4]}`}>{tq.badge}</span>
+                            <span className="variant-q-count">{tq.questionCount} Sual • {tq.imageCount} Şəkilli</span>
+                          </div>
+                          <h3 className="variant-title">{tq.title}</h3>
+                          <p className="variant-summary-text">{tq.subtitle}</p>
+                        </div>
+
+                        <div>
+                          <div className="variant-card-progress">
+                            <div className="variant-progress-info">
+                              <span>İrəliləyiş: <strong>{curStats.answered} / {tq.questionCount}</strong></span>
+                              <span>Düzgün: <strong>{curStats.correct}</strong> ({curStats.pct}%)</span>
+                            </div>
+                            <div className="progress-mini-bar">
+                              <div
+                                className="progress-mini-fill"
+                                style={{ width: `${(curStats.answered / tq.questionCount) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="variant-actions">
+                            <button
+                              className="btn-variant-study"
+                              onClick={() => handleSelectVariant(tq.shortCode, 'study')}
+                            >
+                              Təlim Rejimi →
+                            </button>
+                            <button
+                              className="btn-variant-exam"
+                              onClick={() => handleSelectVariant(tq.shortCode, 'exam')}
+                            >
+                              Sınaq Rejimi
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
           </div>
         ) : (
           /* ======================================================== */
-          /* SCREEN 3: ACTIVE QUIZ VIEW (Variant A, B, C, D, ALL)     */
+          /* SCREEN 3: ACTIVE QUIZ VIEW                               */
           /* ======================================================== */
           <>
             {/* Quick Variant Switcher Bar */}
             <div className="quiz-variant-bar">
-              <span className="quiz-variant-label">Variant Seç:</span>
-              {['A', 'B', 'C', 'D'].map((v) => (
-                <button
-                  key={v}
-                  className={`btn-variant-pill ${selectedVariant === v ? 'active' : ''}`}
-                  onClick={() => handleSelectVariant(v, mode)}
-                >
-                  Variant {v} ({variantStats[v].answered}/20)
-                </button>
-              ))}
-              <button
-                className={`btn-variant-pill ${selectedVariant === 'ALL' ? 'active' : ''}`}
-                onClick={() => handleSelectVariant('ALL', mode)}
-              >
-                Bütün 80 Sual
-              </button>
-              <button
-                className={`btn-variant-pill ${selectedVariant === 'MEGA' ? 'active' : ''}`}
-                onClick={() => handleSelectVariant('MEGA', 'exam')}
-              >
-                Mega Sınaq (20)
-              </button>
+              {!isTeacherVariant ? (
+                <>
+                  <span className="quiz-variant-label">Dərslik Bazası:</span>
+                  {['A', 'B', 'C', 'D'].map((v) => (
+                    <button
+                      key={v}
+                      className={`btn-variant-pill ${selectedVariant === v ? 'active' : ''}`}
+                      onClick={() => handleSelectVariant(v, mode)}
+                    >
+                      Variant {v} ({variantStats[v].answered}/20)
+                    </button>
+                  ))}
+                  <button
+                    className={`btn-variant-pill ${selectedVariant === 'ALL' ? 'active' : ''}`}
+                    onClick={() => handleSelectVariant('ALL', mode)}
+                  >
+                    Bütün 80 Sual
+                  </button>
+                  <button
+                    className="btn-variant-pill btn-switch-base"
+                    onClick={() => handleSelectVariant('GF-1', 'study')}
+                  >
+                    Müəllim Sınaqlarına Keç (165) →
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="quiz-variant-label">Müəllim Sınaqları:</span>
+                  {teacherQuizzesTopic1.map((tq) => (
+                    <button
+                      key={tq.shortCode}
+                      className={`btn-variant-pill ${selectedVariant === tq.shortCode ? 'active' : ''}`}
+                      onClick={() => handleSelectVariant(tq.shortCode, mode)}
+                    >
+                      {tq.shortCode} ({teacherStats[tq.shortCode].answered}/{tq.questionCount})
+                    </button>
+                  ))}
+                  <button
+                    className={`btn-variant-pill ${selectedVariant === 'GF-ALL' ? 'active' : ''}`}
+                    onClick={() => handleSelectVariant('GF-ALL', mode)}
+                  >
+                    Bütün 165 Sual
+                  </button>
+                  <button
+                    className="btn-variant-pill btn-switch-base"
+                    onClick={() => handleSelectVariant('A', 'study')}
+                  >
+                    ← Əsas Dərslik Bazasına Keç (80)
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Category Filter Banner if active */}
@@ -877,7 +1080,7 @@ export default function App() {
                   <span className="diag-heading">Diaqnostik İpucu:</span>
                   <p>
                     {stats.wrong > 0
-                      ? `${stats.wrong} səhviniz qeydə alındı. Dərslik boşluqlarınızı və oxunmalı səhifələri görmək üçün «Diaqnostika» bölməsinə keçin.`
+                      ? `${stats.wrong} səhviniz qeydə alındı. Səhv etdiyiniz sualları təkrar işləyə və ya izahlarına baxa bilərsiniz.`
                       : 'Mükəmməl nəticə! Bütün suallara tam doğru cavab verdiniz!'}
                   </p>
                 </div>
@@ -890,12 +1093,6 @@ export default function App() {
                   )}
                   <button
                     className="btn-secondary"
-                    onClick={() => setMode('analytics')}
-                  >
-                    Zəif Mövzular Analizinə Bax
-                  </button>
-                  <button
-                    className="btn-secondary"
                     onClick={() => {
                       setExamSubmitted(false);
                       setCurrentIndex(0);
@@ -905,7 +1102,7 @@ export default function App() {
                     İzahları Addım-addım Oxu
                   </button>
                   <button className="btn-secondary" onClick={() => setSelectedVariant(null)}>
-                    Digər Varianta Keç
+                    Digər Sınaq / Varianta Keç
                   </button>
                 </div>
               </div>
@@ -914,13 +1111,28 @@ export default function App() {
                 <div className="question-card">
                   <div className="q-meta-row">
                     <div className="q-meta-left">
-                      <span className="q-badge">MİQ Çərçivəsi • Var {currentQ.variant}</span>
+                      <span className="q-badge">
+                        {isTeacherVariant ? `Google Forms • ${currentQ.variant}` : `MİQ Çərçivəsi • Var ${currentQ.variant}`}
+                      </span>
                       <span className="q-category-tag">{currentQ.category}</span>
                     </div>
                     <span className="q-index-tag">Sual #{currentIndex + 1} / {questions.length}</span>
                   </div>
 
-                  <h2 className="question-text">{currentQ.question}</h2>
+                  <h2 className="question-text" style={{ whiteSpace: 'pre-line' }}>
+                    {currentQ.question}
+                  </h2>
+
+                  {currentQ.image && (
+                    <div className="q-image-container">
+                      <img
+                        src={currentQ.image}
+                        alt={`Sual ${currentIndex + 1} sxemi`}
+                        className="q-attached-image"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
 
                   <div className="options-list">
                     {currentQ.options.map((opt) => {
@@ -961,7 +1173,7 @@ export default function App() {
                       </div>
                       <p className="exp-body">{currentQ.explanation}</p>
                       <div className="exp-source">
-                        <strong>Rəsmi Dərslik Mənbəsi:</strong> {currentQ.source}
+                        <strong>Mənbə:</strong> {currentQ.source}
                       </div>
                       {currentQ.remedyBook && userAnswers[currentQ.id] !== currentQ.correct && (
                         <div className="exp-remedy-note">
@@ -1018,7 +1230,7 @@ export default function App() {
       <footer className="main-footer">
         <p>© 2026 Yusif Vahabzadə • Coğrafiya MİQ Hazırlığı üzrə Ağıllı Analiz və Test Portalı</p>
         <p className="footer-sub">
-          Mənbələr: 6, 7, 8, 9, 10 və 11-ci sinif Coğrafiya dərslikləri və Metodik vəsaitləri əsasında hazırlanmışdır.
+          Mənbələr: 6–11-ci sinif Coğrafiya dərslikləri və Metodik vəsaitləri + Müəllim Google Forms Sınaq Bazası.
         </p>
       </footer>
     </div>
