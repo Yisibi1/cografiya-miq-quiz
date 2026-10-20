@@ -1,0 +1,10 @@
+{
+  "name": "MİQ Coğrafiya 90+ Hazırlıq Mərkəzi",
+  "short_name": "MİQ Coğrafiya",
+  "description": "Rəsmi MİQ Qiymətləndirmə Çərçivəsi üzrə Konspekt, Səsli Dərs, 65 Yaddaş Kartı və 340 Test Sualı (Güvən 2025, Dərslik, Müəllim Sınaqları)",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0284c7",
+  "lang": "az"
+}
