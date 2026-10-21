@@ -2214,15 +2214,19 @@ export default function App() {
                         </p>
                       </div>
                       <a
-                        href={selectedTopicId === '1.2' ? '/Movzu_1_2_Konspekt.pdf' : '/Movzu_1_1_Konspekt.pdf'}
+                        href={
+                          selectedTopicId === '1.2'
+                            ? '/Movzu_1_2_Konspekt_Yusif_Vahabzade.pdf'
+                            : '/Movzu_1_1_Konspekt.pdf'
+                        }
                         download={
                           selectedTopicId === '1.2'
-                            ? 'Movzu_1_2_Mekan_Miqyas_Plan_Konspekt.pdf'
+                            ? 'Movzu_1_2_Mekan_ve_Mekanin_Miqyasi_Yusif_Vahabzade.pdf'
                             : 'Movzu_1_1_Cografi_Kesfler_Konspekt.pdf'
                         }
                         className="m-btn m-btn-primary"
                       >
-                        PDF konspekt endir
+                        {selectedTopicId === '1.2' ? 'PDF konspekt (17 səh.)' : 'PDF konspekt (16 səh.)'}
                       </a>
                     </div>
 
