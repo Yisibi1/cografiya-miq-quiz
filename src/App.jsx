@@ -52,6 +52,85 @@ const VARIANTS_META = [
   }
 ];
 
+const ICON_PATHS = {
+  home: 'M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
+  layers: 'M12 3 2 8l10 5 10-5-10-5zM2 12.5l10 5 10-5M2 17l10 5 10-5',
+  map: 'M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2zM9 4v14M15 6v14',
+  notebook: 'M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z',
+  logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  arrowLeft: 'M19 12H5M12 19l-7-7 7-7',
+  arrowRight: 'M5 12h14M12 5l7 7-7 7',
+  clock: 'M12 7v5l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z',
+  grid: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z',
+  shuffle: 'M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5',
+  reset: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',
+  x: 'M18 6 6 18M6 6l12 12',
+  flag: 'M4 22V4M4 4h13l-2 4 2 4H4'
+};
+
+function Icon({ name, size = 18 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={ICON_PATHS[name]} />
+    </svg>
+  );
+}
+
+function ProgressRing({ value, max, size = 72, stroke = 7, children }) {
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  const ratio = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0;
+  return (
+    <div className="m-ring" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle className="m-ring-track" cx={size / 2} cy={size / 2} r={r} strokeWidth={stroke} />
+        <circle
+          className="m-ring-fill"
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          strokeWidth={stroke}
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - ratio)}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      </svg>
+      <div className="m-ring-label">{children}</div>
+    </div>
+  );
+}
+
+const NAV_ITEMS = [
+  { id: 'dashboard', label: 'Kabinet', icon: 'home' },
+  { id: 'topic_detail', label: 'Mövzu 1.1', icon: 'layers' },
+  { id: 'topics', label: 'Çərçivə', icon: 'map' },
+  { id: 'mistakes', label: 'Səhvlər', icon: 'notebook' }
+];
+
+const BANKS = [
+  { name: 'Güvən 2025', tone: 'indigo' },
+  { name: 'Dərslik Bazası', tone: 'sky' },
+  { name: 'Müəllim Sınağı', tone: 'teal' }
+];
+
+const BANK_TONE = Object.fromEntries(BANKS.map((b) => [b.name, b.tone]));
+
+const STATUS_TEXT = {
+  completed: 'Bitib',
+  in_progress: 'Davam edir',
+  not_started: 'Yeni'
+};
+
 export default function App() {
   // Top-level portal navigation when logged in:
   // 'dashboard' | 'topics' | 'topic_detail' | 'mistakes'
@@ -715,7 +794,7 @@ export default function App() {
         bankName: 'Dərslik Bazası',
         badgeText: vm.name,
         badgeClass: '',
-        title: `${vm.name} — ${vm.subtitle}`,
+        title: vm.subtitle,
         subtitleExtra: `${vm.qCount} sual`,
         questions: QUIZ_QUESTIONS.filter((q) => q.variant === vm.code)
       })),
@@ -801,94 +880,145 @@ export default function App() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const renderResumeBanner = () => {
-    if (!lastActiveQuiz || !lastActiveQuiz.variant) return null;
-    const baseList = getBaseListForVariant(lastActiveQuiz.variant);
-    const st = computeQuizRowStatus(lastActiveQuiz.variant, baseList);
+  // Picks what the "continue" card should offer: the last opened quiz,
+  // otherwise the first unfinished pack, otherwise the first new one.
+  const getContinueTarget = () => {
+    if (lastActiveQuiz?.variant) {
+      const st = computeQuizRowStatus(lastActiveQuiz.variant, getBaseListForVariant(lastActiveQuiz.variant));
+      if (st.statusType !== 'completed') {
+        return {
+          code: lastActiveQuiz.variant,
+          mode: lastActiveQuiz.mode || 'study',
+          index: lastActiveQuiz.index || 0,
+          title: lastActiveQuiz.title || getQuizTitleByCode(lastActiveQuiz.variant),
+          eyebrow: 'Qaldığın yerdən davam et',
+          ...st
+        };
+      }
+    }
+    const next =
+      allTopic1PacksSummary.find((p) => p.statusType === 'in_progress') ||
+      allTopic1PacksSummary.find((p) => p.statusType === 'not_started');
+    if (!next) return null;
+    return {
+      code: next.code,
+      mode: 'study',
+      index: next.resumeIdx,
+      title: next.title,
+      eyebrow: next.statusType === 'in_progress' ? 'Yarımçıq test' : 'Növbəti test',
+      ...next
+    };
+  };
+
+  const renderContinueCard = (compact = false) => {
+    const t = getContinueTarget();
+    if (!t) return null;
+    const started = t.answered > 0 || t.index > 0;
     return (
-      <div className="resume-session-banner">
-        <div className="resume-banner-left">
-          <span className="resume-tag">SON QALDIĞINIZ SINAQ</span>
-          <h3 className="resume-title">{lastActiveQuiz.title || getQuizTitleByCode(lastActiveQuiz.variant)}</h3>
-          <p className="resume-meta">
-            Qaldığınız yer: <strong>Sual {(lastActiveQuiz.index || 0) + 1} / {st.total}</strong> • Cavablanıb: <strong>{st.answered}/{st.total} ({st.pct}%)</strong> • Düz: {st.correct} • Səhv: {st.wrong}
-          </p>
+      <section className={`m-continue ${compact ? 'is-compact' : ''}`}>
+        <div className="m-continue-body">
+          <span className="m-eyebrow m-eyebrow-light">{t.eyebrow}</span>
+          <h2 className="m-continue-title">{t.title}</h2>
+          <div className="m-continue-meta">
+            <span>
+              Sual {Math.min(t.index + 1, t.total)} / {t.total}
+            </span>
+            <span>•</span>
+            <span>{t.pct}% cavablanıb</span>
+            {t.answered > 0 && (
+              <>
+                <span>•</span>
+                <span>
+                  {t.correct} düz, {t.wrong} səhv
+                </span>
+              </>
+            )}
+          </div>
+          <div className="m-bar m-bar-light">
+            <div className="m-bar-fill" style={{ width: `${t.pct}%` }} />
+          </div>
         </div>
-        <div className="resume-banner-right">
-          <button
-            className="btn-resume-now"
-            onClick={() =>
-              handleSelectVariant(
-                lastActiveQuiz.variant,
-                lastActiveQuiz.mode || 'study',
-                lastActiveQuiz.index || 0
-              )
-            }
-          >
-            Qaldığım Sualdan Davam Et (Sual {(lastActiveQuiz.index || 0) + 1}) →
-          </button>
-        </div>
-      </div>
+        <button className="m-btn m-btn-white m-btn-lg" onClick={() => handleSelectVariant(t.code, t.mode, t.index)}>
+          {started ? 'Davam et' : 'Başla'}
+          <Icon name="arrowRight" size={18} />
+        </button>
+      </section>
     );
   };
 
-  const renderQuizPackRow = (code, badgeText, badgeClass, title, subtitleExtra, qList, btnClass = '') => {
-    const st = computeQuizRowStatus(code, qList);
+  const renderPackCard = (p) => {
+    const tone = BANK_TONE[p.bankName] || 'sky';
+    const primaryLabel =
+      p.statusType === 'in_progress'
+        ? `Davam et · ${p.resumeIdx + 1}`
+        : p.statusType === 'completed'
+        ? 'Nəticəyə bax'
+        : 'Başla';
     return (
-      <div key={code} className={`clean-row-card status-border-${st.statusType}`}>
-        <div className="clean-row-main">
-          <span className={`clean-row-badge ${badgeClass}`}>{badgeText}</span>
-          <div className="clean-row-text">
-            <div className="row-title-with-status">
-              <h3 className="clean-row-title">{title}</h3>
-              <span className={`quiz-status-pill pill-${st.statusType}`}>{st.statusLabel}</span>
-            </div>
-            <span className="clean-row-meta">
-              {subtitleExtra} • Cavablanıb: <strong>{st.answered}/{st.total}</strong> (Düz: <strong className="text-green">{st.correct}</strong>, Səhv: <strong className="text-red">{st.wrong}</strong>, Boş: {st.unanswered})
-            </span>
-            <div className="row-progress-track">
-              <div
-                className={`row-progress-fill fill-${st.statusType}`}
-                style={{ width: `${st.pct}%` }}
-              />
-            </div>
+      <article key={p.code} className={`m-pack is-${p.statusType}`}>
+        <div className="m-pack-head">
+          <span className={`m-chip tone-${tone}`}>{p.badgeText}</span>
+          <span className={`m-status is-${p.statusType}`}>{STATUS_TEXT[p.statusType]}</span>
+        </div>
+        <h3 className="m-pack-title">{p.title}</h3>
+        <p className="m-pack-meta">{p.subtitleExtra}</p>
+
+        <div className="m-pack-progress">
+          <div className="m-bar">
+            <div className={`m-bar-fill is-${p.statusType}`} style={{ width: `${p.pct}%` }} />
           </div>
+          <span className="m-pack-count">
+            {p.answered}/{p.total}
+          </span>
         </div>
-        <div className="clean-row-buttons">
-          {st.statusType === 'in_progress' ? (
-            <button
-              className={`btn-row-study btn-resume-highlight ${btnClass}`}
-              onClick={() => handleSelectVariant(code, 'study', st.resumeIdx)}
-            >
-              Davam Et (Sual {st.resumeIdx + 1}) →
-            </button>
+        <div className="m-pack-score">
+          {p.answered > 0 ? (
+            <>
+              <span className="m-good">{p.correct} düz</span>
+              <span className="m-bad">{p.wrong} səhv</span>
+              <span>{p.unanswered} boş</span>
+            </>
           ) : (
-            <button
-              className={`btn-row-study ${btnClass}`}
-              onClick={() => handleSelectVariant(code, 'study', 0)}
-            >
-              {st.statusType === 'completed' ? 'İzahlara Bax' : 'Təlimə Başla'}
-            </button>
+            <span>Hələ başlanmayıb</span>
           )}
+        </div>
+
+        <div className="m-pack-actions">
           <button
-            className="btn-row-exam"
-            onClick={() => handleSelectVariant(code, 'exam', 0)}
+            className={`m-btn ${p.statusType === 'in_progress' ? 'm-btn-amber' : 'm-btn-primary'}`}
+            onClick={() => handleSelectVariant(p.code, 'study', p.statusType === 'in_progress' ? p.resumeIdx : 0)}
           >
-            Sınaq (Vaxtlı)
+            {primaryLabel}
           </button>
-          {st.answered > 0 && (
+          <button
+            className="m-btn m-btn-ghost"
+            title="Vaxtlı sınaq rejimində başla"
+            onClick={() => handleSelectVariant(p.code, 'exam', 0)}
+          >
+            <Icon name="clock" size={15} />
+            Sınaq
+          </button>
+          {p.answered > 0 && (
             <button
-              className="btn-row-reset"
+              className="m-icon-btn m-icon-danger"
               title="Bu testin cavablarını sıfırla"
-              onClick={() => handleResetSpecificVariant(code, qList)}
+              aria-label="Sıfırla"
+              onClick={() => handleResetSpecificVariant(p.code, p.questions)}
             >
-              Sıfırla
+              <Icon name="reset" size={16} />
             </button>
           )}
         </div>
-      </div>
+      </article>
     );
   };
+
+  const renderPackGrid = (packs) =>
+    packs.length > 0 ? (
+      <div className="m-pack-grid">{packs.map(renderPackCard)}</div>
+    ) : (
+      <div className="m-empty">Bu filtr üzrə test yoxdur.</div>
+    );
 
   // ==========================================================
   // MANDATORY AUTH GATE: NO TESTS ACCESSIBLE WITHOUT LOGIN
@@ -1078,753 +1208,758 @@ export default function App() {
     );
   }
 
+
+  const displayFirstName = profileCreds.displayName.split(' (')[0];
+  const answeredInQuiz = questions.filter((q) => userAnswers[q.id]).length;
+  const syncLabel =
+    syncStatus === 'syncing' ? 'Sinxronlaşır…' : syncStatus === 'error' ? 'Bağlantı xətası' : 'Yadda saxlanılıb';
+
+  const goTo = (view) => {
+    if (view === 'topic_detail') setSelectedTopicId('1.1');
+    setPortalView(view);
+    window.scrollTo({ top: 0 });
+  };
+
+  const PAGE_HEADINGS = {
+    dashboard: { title: `Salam, ${displayFirstName.split(' ')[0]}`, sub: 'Mövzu 1.1 üzrə hazırlığının ümumi görünüşü' },
+    topic_detail: { title: 'Mövzu 1.1', sub: 'Coğrafi kəşflər və tədqiqatlar' },
+    topics: { title: 'Rəsmi çərçivə', sub: 'MİQ qiymətləndirmə çərçivəsi üzrə mövzular' },
+    mistakes: { title: 'Səhv dəftəri', sub: `${allWrongQuestions.length} sual təkrar gözləyir` }
+  };
+  const heading = PAGE_HEADINGS[portalView] || PAGE_HEADINGS.dashboard;
+
+  const navBadge = (id) => {
+    if (id === 'dashboard') return `${completedPacksCount}/12`;
+    if (id === 'mistakes' && allWrongQuestions.length > 0) return allWrongQuestions.length;
+    return null;
+  };
+
+  const HUB_TABS = [
+    { id: 'guven', label: 'Güvən 2025', count: `${totalGuvenAnswered}/95` },
+    { id: 'textbook', label: 'Dərslik', count: `${totalTextbookAnswered}/80` },
+    { id: 'teacher', label: 'Müəllim', count: `${totalTeacherAnswered}/165` },
+    { id: 'study', label: 'Konspekt' },
+    { id: 'flashcards', label: 'Kartlar', count: `${knownFlashcardsCount}/65` },
+    { id: 'analytics', label: 'Diaqnostika' }
+  ];
+
+  const BANK_TABS = {
+    guven: {
+      bank: 'Güvən 2025',
+      title: 'Güvən 2025 test bankı',
+      sub: '«Tapşırıqlar Toplusu 2025» — A, B, C qrup və açıq tapşırıqlar',
+      mega: { code: 'GV-MEGA', label: 'Qarışıq sınaq · 25' },
+      all: { code: 'GV-ALL', label: 'Hamısı · 95' }
+    },
+    textbook: {
+      bank: 'Dərslik Bazası',
+      title: 'Dərslik bazası',
+      sub: '6–11-ci sinif dərslikləri və metodik vəsaitlər əsasında',
+      mega: { code: 'MEGA', label: 'Qarışıq sınaq · 20' },
+      all: { code: 'ALL', label: 'Hamısı · 80' }
+    },
+    teacher: {
+      bank: 'Müəllim Sınağı',
+      title: 'Müəllim sınaqları',
+      sub: 'Dərs qrupunda paylaşılan 4 sınaq',
+      mega: { code: 'GF-MEGA', label: 'Qarışıq sınaq · 25' },
+      all: { code: 'GF-ALL', label: 'Hamısı · 165' }
+    }
+  };
+
+  const PACK_FILTERS = [
+    { id: 'ALL', label: 'Hamısı', count: allTopic1PacksSummary.length },
+    { id: 'in_progress', label: 'Davam edən', count: inProgressPacks.length },
+    { id: 'completed', label: 'Bitmiş', count: completedPacksCount },
+    { id: 'not_started', label: 'Yeni', count: notStartedPacksCount }
+  ];
+
   return (
-    <div className="app-container">
-      {/* Top Quiz Platform Navigation Header */}
-      <header className="main-header">
-        <div className="header-inner">
-          <div className="brand-block">
-            {selectedVariant !== null ? (
-              <button
-                className="btn-back-catalog"
-                onClick={() => setSelectedVariant(null)}
-              >
-                ← Sınaqdan Çıx (Nəticə Yadda Saxlanılıb)
-              </button>
-            ) : (
-              <span className="badge-academic">MİQ Coğrafiya «90+ Hədəf» Quiz Platforması</span>
-            )}
-            <h1 className="header-title">
-              {selectedVariant !== null
-                ? getQuizTitleByCode(selectedVariant)
-                : portalView === 'dashboard'
-                ? 'Şəxsi Kabinet və Test İzləmə Paneli'
-                : portalView === 'topics'
-                ? 'Rəsmi MİQ Qiymətləndirmə Çərçivəsi (Mövzu Kataloqu)'
-                : portalView === 'mistakes'
-                ? `Səhv Dəftərim (${allWrongQuestions.length} Sual)`
-                : 'Mövzu 1.1: Coğrafi kəşflər və tədqiqatlar'}
-            </h1>
+    <div className={`m-app ${selectedVariant !== null ? 'is-quiz' : ''}`}>
+      {/* ======================== SIDEBAR (desktop) ======================== */}
+      {selectedVariant === null && (
+        <aside className="m-sidebar">
+          <div className="m-brand">
+            <span className="m-brand-mark">M</span>
+            <div>
+              <strong>MİQ Coğrafiya</strong>
+              <span>90+ hədəf</span>
+            </div>
           </div>
 
-          <div className="header-actions">
-            {selectedVariant === null ? (
-              <nav className="portal-top-nav">
+          <nav className="m-nav">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                className={`m-nav-item ${portalView === item.id ? 'active' : ''}`}
+                onClick={() => goTo(item.id)}
+              >
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+                {navBadge(item.id) !== null && <em className="m-nav-badge">{navBadge(item.id)}</em>}
+              </button>
+            ))}
+          </nav>
+
+          <div className="m-user">
+            <span className="m-avatar">{displayFirstName.charAt(0).toUpperCase()}</span>
+            <div className="m-user-text">
+              <strong>{displayFirstName}</strong>
+              <span>
+                <i className={`m-dot dot-${syncStatus}`} />
+                {syncLabel}
+              </span>
+            </div>
+            <button className="m-icon-btn" title="Çıxış" aria-label="Çıxış" onClick={handleProfileLogout}>
+              <Icon name="logout" size={16} />
+            </button>
+          </div>
+        </aside>
+      )}
+
+      <div className="m-main">
+        {selectedVariant !== null ? (
+          /* ======================== QUIZ TOP BAR ======================== */
+          <header className="m-quizbar">
+            <div className="m-quizbar-inner">
+              <button className="m-btn m-btn-ghost" onClick={() => setSelectedVariant(null)} title="Nəticə yadda saxlanılır">
+                <Icon name="arrowLeft" size={16} />
+                <span className="m-hide-sm">Çıx</span>
+              </button>
+              <div className="m-quizbar-title">
+                <span className="m-eyebrow">{mode === 'exam' ? 'Vaxtlı sınaq' : 'Təlim rejimi'}</span>
+                <strong>{getQuizTitleByCode(selectedVariant)}</strong>
+              </div>
+              <div className="m-seg">
                 <button
-                  className={`portal-nav-btn ${portalView === 'dashboard' ? 'active' : ''}`}
-                  onClick={() => setPortalView('dashboard')}
-                >
-                  Kabinetim ({completedPacksCount}/12)
-                </button>
-                <button
-                  className={`portal-nav-btn ${portalView === 'topic_detail' ? 'active' : ''}`}
+                  className={mode === 'study' ? 'active' : ''}
                   onClick={() => {
-                    setSelectedTopicId('1.1');
-                    setPortalView('topic_detail');
+                    setMode('study');
+                    setExamSubmitted(false);
                   }}
                 >
-                  Mövzu 1.1 Testləri
+                  Təlim
                 </button>
                 <button
-                  className={`portal-nav-btn ${portalView === 'topics' ? 'active' : ''}`}
-                  onClick={() => setPortalView('topics')}
+                  className={mode === 'exam' ? 'active' : ''}
+                  onClick={() => {
+                    setMode('exam');
+                    setExamSubmitted(false);
+                  }}
                 >
-                  Rəsmi Çərçivə
+                  Sınaq
                 </button>
-                <button
-                  className={`portal-nav-btn ${portalView === 'mistakes' ? 'active' : ''}`}
-                  onClick={() => setPortalView('mistakes')}
-                >
-                  Səhv Dəftəri ({allWrongQuestions.length})
-                </button>
-              </nav>
-            ) : (
-              <>
-                <div className="mode-toggle">
-                  <button
-                    className={`mode-btn ${mode === 'study' ? 'active' : ''}`}
-                    onClick={() => {
-                      setMode('study');
-                      setExamSubmitted(false);
-                    }}
-                  >
-                    Təlim
-                  </button>
-                  <button
-                    className={`mode-btn ${mode === 'exam' ? 'active' : ''}`}
-                    onClick={() => {
-                      setMode('exam');
-                      setExamSubmitted(false);
-                    }}
-                  >
-                    Sınaq
-                  </button>
-                </div>
-
-                {mode === 'exam' && !examSubmitted && (
-                  <div className={`timer-box ${timeLeft < 300 ? 'timer-urgent' : ''}`}>
-                    <span className="timer-val">{formatTime(timeLeft)}</span>
-                  </div>
-                )}
-              </>
-            )}
-
-            <div className="user-account-pill">
-              <span className={`sync-dot dot-${syncStatus}`} title="Bulud sinxronizasiyası aktivdir" />
-              <span className="user-pill-name">{profileCreds.displayName.split(' (')[0]}</span>
-              <button className="btn-logout-mini" onClick={handleProfileLogout}>
-                Çıxış
+              </div>
+              {mode === 'exam' && !examSubmitted && (
+                <span className={`m-timer ${timeLeft < 300 ? 'is-urgent' : ''}`}>
+                  <Icon name="clock" size={15} />
+                  {formatTime(timeLeft)}
+                </span>
+              )}
+            </div>
+            <div className="m-quiz-progress">
+              <div style={{ width: `${questions.length ? (answeredInQuiz / questions.length) * 100 : 0}%` }} />
+            </div>
+          </header>
+        ) : (
+          /* ======================== PAGE TOP BAR ======================== */
+          <header className="m-topbar">
+            <div>
+              <h1 className="m-page-title">{heading.title}</h1>
+              <p className="m-page-sub">{heading.sub}</p>
+            </div>
+            <div className="m-topbar-right">
+              <span className="m-sync-chip">
+                <i className={`m-dot dot-${syncStatus}`} />
+                {syncLabel}
+              </span>
+              <button className="m-icon-btn m-show-sm" title="Çıxış" aria-label="Çıxış" onClick={handleProfileLogout}>
+                <Icon name="logout" size={16} />
               </button>
             </div>
-          </div>
-        </div>
-
-        {selectedVariant !== null && (
-          <div className="progress-bar-bg">
-            <div
-              className="progress-bar-fill"
-              style={{
-                width: `${(questions.filter((q) => userAnswers[q.id]).length / questions.length) * 100}%`
-              }}
-            />
-          </div>
+          </header>
         )}
-      </header>
 
-      <main className="content-wrap">
-        {/* ======================================================== */}
-        {/* ACTIVE QUIZ VIEW                                         */}
-        {/* ======================================================== */}
-        {selectedVariant !== null ? (
-          <>
-            <div className="control-strip">
-              <div className="q-nav-status">
-                <span>Sual <strong>{currentIndex + 1}</strong> / {questions.length}</span>
-                <span className="status-dot">•</span>
-                <span>Cavablanan: <strong>{questions.filter((q) => userAnswers[q.id]).length}/{questions.length}</strong></span>
-                <span className="status-dot">•</span>
-                <span className="text-green">Düz: <strong>{stats.correct}</strong></span>
-                <span className="status-dot">•</span>
-                <span className="text-red">Səhv: <strong>{stats.wrong}</strong></span>
-              </div>
-
-              <div className="action-buttons">
-                <button
-                  className="btn-secondary"
-                  onClick={() => setShowQuestionDrawer(!showQuestionDrawer)}
-                >
-                  Suallar Cədvəli ({questions.filter((q) => userAnswers[q.id]).length}/{questions.length})
-                </button>
-                <button className="btn-secondary" onClick={handleShuffle}>
-                  Qarışdır
-                </button>
-                <button className="btn-secondary" onClick={handleResetCurrent}>
-                  Sıfırla
-                </button>
-              </div>
-            </div>
-
-            {showQuestionDrawer && (
-              <div className="drawer-card">
-                <div className="drawer-header">
-                  <span>Suala Keçid (Yaşıl = Düz, Qırmızı = Səhv, Boz = Boş):</span>
-                  <button className="btn-close" onClick={() => setShowQuestionDrawer(false)}>X</button>
-                </div>
-                <div className="q-grid">
-                  {questions.map((q, idx) => {
-                    const ans = userAnswers[q.id];
-                    let statusClass = 'unanswered';
-                    if (ans) {
-                      if (mode === 'study' || examSubmitted) {
-                        statusClass = ans === q.correct ? 'correct' : 'wrong';
-                      } else {
-                        statusClass = 'answered';
-                      }
-                    }
-                    return (
-                      <button
-                        key={q.id}
-                        className={`q-grid-btn ${statusClass} ${idx === currentIndex ? 'current' : ''}`}
-                        onClick={() => {
-                          setCurrentIndex(idx);
-                          setShowQuestionDrawer(false);
-                        }}
-                      >
-                        {idx + 1}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {mode === 'exam' && examSubmitted ? (
-              <div className="results-card">
-                <div className="results-header">
-                  <span className="results-pill">Rəsmi MİQ Sınaq Nəticəsi (4 Səhv = -1 Düz)</span>
-                  <h2 className="results-score">{stats.miqScore80} / 80 Bal</h2>
-                  <p className="results-subtitle">
-                    {questions.length} sualdan <strong>{stats.correct} düz</strong>, <strong>{stats.wrong} səhv</strong> • Xalis düz: <strong>{stats.netCorrect}</strong> ({stats.percentage}%)
-                  </p>
-                </div>
-
-                <div className="stats-row">
-                  <div className="stat-box stat-correct">
-                    <span className="stat-num">{stats.correct}</span>
-                    <span className="stat-lbl">Düzgün</span>
-                  </div>
-                  <div className="stat-box stat-wrong">
-                    <span className="stat-num">{stats.wrong}</span>
-                    <span className="stat-lbl">Səhv</span>
-                  </div>
-                  <div className="stat-box stat-empty">
-                    <span className="stat-num">{stats.unanswered}</span>
-                    <span className="stat-lbl">Boş</span>
-                  </div>
-                </div>
-
-                <div className="results-actions">
-                  {stats.wrong > 0 && (
-                    <button className="btn-primary" onClick={handleRetestWrong}>
-                      Səhvləri Təkrar İşlə ({stats.wrong})
-                    </button>
+        <main className="m-content">
+          {selectedVariant !== null ? (
+            /* ======================== ACTIVE QUIZ ======================== */
+            <div className="m-quiz">
+              <div className="m-quiz-tools">
+                <div className="m-quiz-stats">
+                  <span>
+                    Sual <b>{currentIndex + 1}</b> / {questions.length}
+                  </span>
+                  {(mode === 'study' || examSubmitted) && (
+                    <>
+                      <span className="m-good">{stats.correct} düz</span>
+                      <span className="m-bad">{stats.wrong} səhv</span>
+                    </>
                   )}
+                  {mode === 'exam' && !examSubmitted && <span>{answeredInQuiz} cavablanıb</span>}
+                </div>
+                <div className="m-tool-btns">
                   <button
-                    className="btn-secondary"
-                    onClick={() => {
-                      setExamSubmitted(false);
-                      setCurrentIndex(0);
-                      setMode('study');
-                    }}
+                    className={`m-btn m-btn-ghost ${showQuestionDrawer ? 'is-on' : ''}`}
+                    onClick={() => setShowQuestionDrawer(!showQuestionDrawer)}
                   >
-                    İzahlara Bax
+                    <Icon name="grid" size={15} />
+                    <span className="m-hide-sm">Suallar</span>
                   </button>
-                  <button className="btn-secondary" onClick={() => setSelectedVariant(null)}>
-                    Kabinetə / Menyuya Qayıt
+                  <button className="m-icon-btn" title="Qarışdır" aria-label="Qarışdır" onClick={handleShuffle}>
+                    <Icon name="shuffle" size={16} />
+                  </button>
+                  <button
+                    className="m-icon-btn m-icon-danger"
+                    title="Cavabları sıfırla"
+                    aria-label="Sıfırla"
+                    onClick={handleResetCurrent}
+                  >
+                    <Icon name="reset" size={16} />
                   </button>
                 </div>
               </div>
-            ) : (
-              currentQ && (
-                <div className="question-card">
-                  <div className="q-meta-row">
-                    <span className="q-badge">
-                      {isGuvenVariant
-                        ? `Güvən 2025 • Sual ${currentQ.num || currentIndex + 1}`
-                        : isTeacherVariant
-                        ? 'Müəllim Sınağı'
-                        : `Variant ${currentQ.variant}`}
-                    </span>
-                    <span className="q-index-tag">Sual {currentIndex + 1} / {questions.length}</span>
-                  </div>
 
-                  <h2 className="question-text" style={{ whiteSpace: 'pre-line' }}>
-                    {currentQ.question}
-                  </h2>
-
-                  {currentQ.image && (
-                    <div className="q-image-container">
-                      <img
-                        src={currentQ.image}
-                        alt={`Sual ${currentIndex + 1}`}
-                        className="q-attached-image"
-                        loading="lazy"
-                      />
+              {showQuestionDrawer && (
+                <div className="m-panel m-drawer">
+                  <div className="m-drawer-head">
+                    <div className="m-legend">
+                      <span><i className="lg-correct" />Düz</span>
+                      <span><i className="lg-wrong" />Səhv</span>
+                      <span><i className="lg-empty" />Boş</span>
                     </div>
-                  )}
-
-                  <div className="options-list">
-                    {currentQ.options.map((opt) => {
-                      const letter = opt.substring(0, 1);
-                      const isSelected = userAnswers[currentQ.id] === letter;
-                      const isCorrect = letter === currentQ.correct;
-
-                      let optClass = 'opt-default';
-                      if (isSelected) optClass += ' opt-selected';
-
-                      if (mode === 'study' && isSelected) {
-                        optClass += isCorrect ? ' opt-correct' : ' opt-wrong';
-                      } else if (mode === 'study' && userAnswers[currentQ.id] && isCorrect) {
-                        optClass += ' opt-revealed-correct';
+                    <button className="m-icon-btn" aria-label="Bağla" onClick={() => setShowQuestionDrawer(false)}>
+                      <Icon name="x" size={16} />
+                    </button>
+                  </div>
+                  <div className="q-grid">
+                    {questions.map((q, idx) => {
+                      const ans = userAnswers[q.id];
+                      let statusClass = 'unanswered';
+                      if (ans) {
+                        if (mode === 'study' || examSubmitted) {
+                          statusClass = ans === q.correct ? 'correct' : 'wrong';
+                        } else {
+                          statusClass = 'answered';
+                        }
                       }
-
                       return (
                         <button
-                          key={letter}
-                          className={`option-btn ${optClass}`}
-                          onClick={() => handleSelectOption(currentQ.id, letter)}
+                          key={q.id}
+                          className={`q-grid-btn ${statusClass} ${idx === currentIndex ? 'current' : ''}`}
+                          onClick={() => {
+                            setCurrentIndex(idx);
+                            setShowQuestionDrawer(false);
+                          }}
                         >
-                          <span className="opt-letter">{letter}</span>
-                          <span className="opt-text">{opt.substring(3)}</span>
+                          {idx + 1}
                         </button>
                       );
                     })}
                   </div>
+                </div>
+              )}
 
-                  {mode === 'study' && (showExplanation[currentQ.id] || userAnswers[currentQ.id]) && (
-                    <div className={`explanation-box ${userAnswers[currentQ.id] === currentQ.correct ? 'exp-pass' : 'exp-fail'}`}>
-                      <div className="exp-status-line">
-                        <span className="exp-badge">
-                          {userAnswers[currentQ.id] === currentQ.correct
-                            ? 'Düzgün Cavab: ' + currentQ.correct
-                            : 'Düzgün Cavab: ' + currentQ.correct + ' (Seçiminiz: ' + (userAnswers[currentQ.id] || 'Yoxdur') + ')'}
-                        </span>
-                      </div>
-                      <p className="exp-body">{currentQ.explanation}</p>
+              {mode === 'exam' && examSubmitted ? (
+                <div className="m-panel m-results">
+                  <span className="m-eyebrow">MİQ qaydası ilə nəticə (4 səhv = 1 düz)</span>
+                  <ProgressRing value={Number(stats.miqScore80)} max={80} size={132} stroke={11}>
+                    <strong>{stats.miqScore80}</strong>
+                    <span>/ 80 bal</span>
+                  </ProgressRing>
+                  <p className="m-results-sub">
+                    {questions.length} sualdan xalis düz: <b>{stats.netCorrect}</b> ({stats.percentage}%)
+                  </p>
+                  <div className="m-results-stats">
+                    <div className="is-good">
+                      <strong>{stats.correct}</strong>
+                      <span>Düz</span>
                     </div>
-                  )}
-
-                  <div className="q-footer-nav">
-                    <button
-                      className="btn-nav"
-                      disabled={currentIndex === 0}
-                      onClick={() => {
-                        setCurrentIndex((prev) => Math.max(0, prev - 1));
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                    >
-                      ← Əvvəlki
-                    </button>
-
-                    {mode === 'exam' && (
-                      <button
-                        className="btn-finish-exam"
-                        onClick={() => {
-                          if (window.confirm('İmtahanı bitirmək istədiyinizdən əminsiniz?')) {
-                            handleFinishExam();
-                          }
-                        }}
-                      >
-                        Bitir
+                    <div className="is-bad">
+                      <strong>{stats.wrong}</strong>
+                      <span>Səhv</span>
+                    </div>
+                    <div>
+                      <strong>{stats.unanswered}</strong>
+                      <span>Boş</span>
+                    </div>
+                  </div>
+                  <div className="m-results-actions">
+                    {stats.wrong > 0 && (
+                      <button className="m-btn m-btn-primary" onClick={handleRetestWrong}>
+                        Səhvləri təkrar işlə ({stats.wrong})
                       </button>
                     )}
-
                     <button
-                      className="btn-nav btn-nav-primary"
-                      disabled={currentIndex === questions.length - 1}
+                      className="m-btn m-btn-ghost"
                       onClick={() => {
-                        setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1));
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                        setExamSubmitted(false);
+                        setCurrentIndex(0);
+                        setMode('study');
                       }}
                     >
-                      Növbəti →
+                      İzahlara bax
+                    </button>
+                    <button className="m-btn m-btn-ghost" onClick={() => setSelectedVariant(null)}>
+                      Kabinetə qayıt
                     </button>
                   </div>
                 </div>
-              )
-            )}
-          </>
-        ) : portalView === 'dashboard' ? (
-          /* ======================================================== */
-          /* VIEW 1: PERSONAL USER DASHBOARD (ŞƏXSİ KABİNETİM)        */
-          /* ======================================================== */
-          <div className="dashboard-screen">
-            <div className="dash-welcome-card">
-              <div className="dash-welcome-left">
-                <span className="dash-sync-tag">
-                  {syncStatus === 'syncing' ? 'Buludla sinxronlaşdırılır...' : 'Bulud Sinxronizasiyası Aktivdir'}
-                </span>
-                <h2 className="dash-welcome-title">Xoş gəldiniz, {profileCreds.displayName}</h2>
-                <p className="dash-welcome-sub">
-                  İşlədiyiniz bütün testlər, yarıda qaldığınız sual nömrələri və səhvləriniz hesabınızda avtomatik yadda saxlanılır.
-                </p>
-              </div>
-              <div className="dash-welcome-actions">
-                <button
-                  className="btn-topic-primary"
-                  onClick={() => {
-                    setSelectedTopicId('1.1');
-                    setPortalView('topic_detail');
-                  }}
-                >
-                  Mövzu 1.1 Sınaqları və Konspektə Keç →
-                </button>
-              </div>
+              ) : (
+                currentQ && (
+                  <div className="m-panel m-question">
+                    <div className="m-question-meta">
+                      <span className="m-chip tone-sky">
+                        {isGuvenVariant
+                          ? `Güvən 2025 · Sual ${currentQ.num || currentIndex + 1}`
+                          : isTeacherVariant
+                          ? 'Müəllim sınağı'
+                          : `Variant ${currentQ.variant}`}
+                      </span>
+                      <span className="m-muted">
+                        {currentIndex + 1} / {questions.length}
+                      </span>
+                    </div>
+
+                    <h2 className="m-question-text">{currentQ.question}</h2>
+
+                    {currentQ.image && (
+                      <div className="m-question-image">
+                        <img src={currentQ.image} alt={`Sual ${currentIndex + 1}`} loading="lazy" />
+                      </div>
+                    )}
+
+                    <div className="m-options">
+                      {currentQ.options.map((opt) => {
+                        const letter = opt.substring(0, 1);
+                        const chosen = userAnswers[currentQ.id];
+                        const isSelected = chosen === letter;
+                        const isCorrect = letter === currentQ.correct;
+
+                        let optClass = '';
+                        if (mode === 'study' && chosen) {
+                          if (isSelected) optClass = isCorrect ? 'is-correct' : 'is-wrong';
+                          else if (isCorrect) optClass = 'is-revealed';
+                          else optClass = 'is-dim';
+                        } else if (isSelected) {
+                          optClass = 'is-selected';
+                        }
+
+                        return (
+                          <button
+                            key={letter}
+                            className={`m-option ${optClass}`}
+                            onClick={() => handleSelectOption(currentQ.id, letter)}
+                          >
+                            <span className="m-option-letter">{letter}</span>
+                            <span className="m-option-text">{opt.substring(3)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {mode === 'study' && (showExplanation[currentQ.id] || userAnswers[currentQ.id]) && (
+                      <div
+                        className={`m-explain ${userAnswers[currentQ.id] === currentQ.correct ? 'is-pass' : 'is-fail'}`}
+                      >
+                        <strong>
+                          {userAnswers[currentQ.id] === currentQ.correct
+                            ? `Düzdür — cavab ${currentQ.correct}`
+                            : `Səhvdir — düzgün cavab ${currentQ.correct}${
+                                userAnswers[currentQ.id] ? ` (seçimin: ${userAnswers[currentQ.id]})` : ''
+                              }`}
+                        </strong>
+                        <p>{currentQ.explanation}</p>
+                      </div>
+                    )}
+
+                    <div className="m-question-nav">
+                      <button
+                        className="m-btn m-btn-ghost"
+                        disabled={currentIndex === 0}
+                        onClick={() => {
+                          setCurrentIndex((prev) => Math.max(0, prev - 1));
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                      >
+                        <Icon name="arrowLeft" size={16} />
+                        Əvvəlki
+                      </button>
+
+                      {mode === 'exam' && (
+                        <button
+                          className="m-btn m-btn-danger"
+                          onClick={() => {
+                            if (window.confirm('İmtahanı bitirmək istədiyinizdən əminsiniz?')) {
+                              handleFinishExam();
+                            }
+                          }}
+                        >
+                          <Icon name="flag" size={15} />
+                          Bitir
+                        </button>
+                      )}
+
+                      <button
+                        className="m-btn m-btn-primary"
+                        disabled={currentIndex === questions.length - 1}
+                        onClick={() => {
+                          setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1));
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                      >
+                        Növbəti
+                        <Icon name="arrowRight" size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )
+              )}
             </div>
+          ) : portalView === 'dashboard' ? (
+            /* ======================== DASHBOARD ======================== */
+            <div className="m-stack">
+              {renderContinueCard()}
 
-            {/* KPI Summary Cards */}
-            <div className="dash-kpi-grid">
-              <div className="dash-kpi-card">
-                <span className="dash-kpi-label">Tamamlanan Test Paketləri</span>
-                <strong className="dash-kpi-val text-green">{completedPacksCount} / 12 Paket</strong>
-                <span className="dash-kpi-sub">100% bitirilmiş sınaqlar</span>
-              </div>
-              <div className="dash-kpi-card">
-                <span className="dash-kpi-label">Yarıda Qalan Testlər</span>
-                <strong className="dash-kpi-val" style={{ color: '#d97706' }}>{inProgressPacks.length} Paket</strong>
-                <span className="dash-kpi-sub">Başlanmayan: {notStartedPacksCount} paket</span>
-              </div>
-              <div className="dash-kpi-card">
-                <span className="dash-kpi-label">Cəmi İşlənilən Sual</span>
-                <strong className="dash-kpi-val text-blue">{globalMiqSummary.answered} / 340</strong>
-                <span className="dash-kpi-sub">Düz: {globalMiqSummary.correct} • Səhv: {globalMiqSummary.wrong} ({globalMiqSummary.accuracyPct}%)</span>
-              </div>
-              <div className="dash-kpi-card">
-                <span className="dash-kpi-label">Rəsmi MİQ Xalis Bal Ekvivalenti</span>
-                <strong className="dash-kpi-val">{globalMiqSummary.miqEquiv80} / 80 Bal</strong>
-                <span className="dash-kpi-sub">4 səhv = -1 düz düsturu ilə</span>
-              </div>
-            </div>
-
-            {/* Instant Resume Banner */}
-            {renderResumeBanner()}
-
-            {/* In-Progress Tests Section */}
-            {inProgressPacks.length > 0 && (
-              <div className="clean-list-container" style={{ marginBottom: '20px' }}>
-                <div className="clean-list-header">
+              <div className="m-stats">
+                <div className="m-stat m-stat-ring">
+                  <ProgressRing value={Number(globalMiqSummary.miqEquiv80)} max={80}>
+                    <strong>{globalMiqSummary.miqEquiv80}</strong>
+                  </ProgressRing>
                   <div>
-                    <h2 className="clean-section-title">Yarıda Qalan Testləriniz ({inProgressPacks.length})</h2>
-                    <p className="clean-section-sub">
-                      Yarımçıq qoyduğunuz sınaqları birbaşa qaldığınız sualdan davam etdirin
+                    <span className="m-stat-label">Təxmini MİQ balı</span>
+                    <strong className="m-stat-title">80 bal üzərindən</strong>
+                    <span className="m-stat-sub">4 səhv 1 düzü silir</span>
+                  </div>
+                </div>
+                <div className="m-stat">
+                  <span className="m-stat-label">Dəqiqlik</span>
+                  <strong className="m-stat-value">{globalMiqSummary.accuracyPct}%</strong>
+                  <span className="m-stat-sub">
+                    <span className="m-good">{globalMiqSummary.correct} düz</span> ·{' '}
+                    <span className="m-bad">{globalMiqSummary.wrong} səhv</span>
+                  </span>
+                </div>
+                <div className="m-stat">
+                  <span className="m-stat-label">İşlənən suallar</span>
+                  <strong className="m-stat-value">
+                    {globalMiqSummary.answered}
+                    <small> / {globalMiqSummary.total}</small>
+                  </strong>
+                  <div className="m-bar">
+                    <div
+                      className="m-bar-fill"
+                      style={{ width: `${(globalMiqSummary.answered / globalMiqSummary.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="m-stat">
+                  <span className="m-stat-label">Bitmiş testlər</span>
+                  <strong className="m-stat-value">
+                    {completedPacksCount}
+                    <small> / {allTopic1PacksSummary.length}</small>
+                  </strong>
+                  <span className="m-stat-sub">{inProgressPacks.length} test yarımçıqdır</span>
+                </div>
+              </div>
+
+              <section className="m-section">
+                <div className="m-section-head">
+                  <div>
+                    <h2 className="m-section-title">Test paketləri</h2>
+                    <p className="m-section-sub">
+                      {allTopic1PacksSummary.length} paket · {globalMiqSummary.total} sual
                     </p>
                   </div>
-                </div>
-                <div className="clean-rows">
-                  {inProgressPacks.map((p) =>
-                    renderQuizPackRow(
-                      p.code,
-                      p.badgeText,
-                      p.badgeClass,
-                      p.title,
-                      p.subtitleExtra,
-                      p.questions
-                    )
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Complete 12 Test Packs Progress Table */}
-            <div className="clean-list-container">
-              <div className="clean-list-header">
-                <div>
-                  <h2 className="clean-section-title">Mövzu 1.1 üzrə Bütün Test Paketlərinin İzləmə Cədvəli (12 Paket • 340 Sual)</h2>
-                  <p className="clean-section-sub">
-                    Hansı testləri bitirdiyinizi, hansılarda neçənci sualda qaldığınızı və hansılara başlamadığınızı buradan izləyin
-                  </p>
-                </div>
-                <div className="chapter-pills-row">
-                  {[
-                    { id: 'ALL', label: `Hamısı (12)` },
-                    { id: 'in_progress', label: `Yarıda Qalanlar (${inProgressPacks.length})` },
-                    { id: 'completed', label: `Tamamlananlar (${completedPacksCount})` },
-                    { id: 'not_started', label: `Başlanmayanlar (${notStartedPacksCount})` }
-                  ].map((f) => (
-                    <button
-                      key={f.id}
-                      className={`chapter-pill ${dashPackFilter === f.id ? 'active' : ''}`}
-                      onClick={() => setDashPackFilter(f.id)}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="clean-rows">
-                {filteredDashboardPacks.length > 0 ? (
-                  filteredDashboardPacks.map((p) =>
-                    renderQuizPackRow(
-                      p.code,
-                      p.badgeText,
-                      p.badgeClass,
-                      p.title,
-                      `${p.bankName} • ${p.subtitleExtra}`,
-                      p.questions
-                    )
-                  )
-                ) : (
-                  <p className="clean-section-sub" style={{ padding: '16px 0', textAlign: 'center' }}>
-                    Bu filtr üzrə test paketi yoxdur.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : portalView === 'topics' ? (
-          /* ======================================================== */
-          /* VIEW 2: OFFICIAL MİQ FRAMEWORK TOPIC CATALOG             */
-          /* ======================================================== */
-          <div className="catalog-screen">
-            {renderResumeBanner()}
-
-            <div className="framework-summary-banner">
-              {FRAMEWORK_SECTIONS.map((sec) => (
-                <div key={sec.id} className="fw-summary-card">
-                  <div className="fw-summary-top">
-                    <span className="fw-sec-title">{sec.num}</span>
-                    <span className="fw-sec-points">{sec.officialQuestions} Sual • {sec.officialPoints} Bal</span>
-                  </div>
-                  <p className="fw-sec-desc">{sec.desc}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="catalog-grid">
-              {TOPICS_CATALOG.map((top) => (
-                <div
-                  key={top.id}
-                  className={`topic-card ${top.active ? 'topic-card-active' : 'topic-card-disabled'}`}
-                >
-                  <div className="topic-card-header">
-                    <span className="topic-code-badge">{top.topicCode}</span>
-                    {top.active ? (
-                      <span className="topic-status-pill status-ready">
-                        Aktiv • Tamamlanıb: {completedPacksCount}/12 Test • Yarıda: {inProgressPacks.length}
-                      </span>
-                    ) : (
-                      <span className="topic-status-pill status-soon">Növbəti Mərhələdə</span>
-                    )}
-                  </div>
-
-                  <h3 className="topic-title">{top.title}</h3>
-                  <p className="topic-desc">{top.sectionNum}: {top.sectionTitle}</p>
-                  <p className="topic-sub-detail">{top.description}</p>
-
-                  {top.id === '1.1' && (
-                    <div className="simple-topic-stats">
-                      <span>Güvən 2025: <strong>{totalGuvenAnswered}/95</strong></span>
-                      <span>•</span>
-                      <span>Dərslik: <strong>{totalTextbookAnswered}/80</strong></span>
-                      <span>•</span>
-                      <span>Müəllim: <strong>{totalTeacherAnswered}/165</strong></span>
-                      <span>•</span>
-                      <span>Kartlar: <strong>{knownFlashcardsCount}/65</strong></span>
-                    </div>
-                  )}
-
-                  <div className="topic-actions-single">
-                    {top.active ? (
+                  <div className="m-filter">
+                    {PACK_FILTERS.map((f) => (
                       <button
-                        className="btn-topic-primary"
+                        key={f.id}
+                        className={dashPackFilter === f.id ? 'active' : ''}
+                        onClick={() => setDashPackFilter(f.id)}
+                      >
+                        {f.label}
+                        <em>{f.count}</em>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {filteredDashboardPacks.length === 0 ? (
+                  <div className="m-empty">Bu filtr üzrə test yoxdur.</div>
+                ) : (
+                  BANKS.map((bank) => {
+                    const packs = filteredDashboardPacks.filter((p) => p.bankName === bank.name);
+                    if (packs.length === 0) return null;
+                    return (
+                      <div key={bank.name} className="m-group">
+                        <h3 className="m-group-title">
+                          <i className={`m-group-dot tone-${bank.tone}`} />
+                          {bank.name}
+                          <span>{packs.length}</span>
+                        </h3>
+                        {renderPackGrid(packs)}
+                      </div>
+                    );
+                  })
+                )}
+              </section>
+            </div>
+          ) : portalView === 'topics' ? (
+            /* ======================== FRAMEWORK CATALOG ======================== */
+            <div className="m-stack">
+              <div className="m-fw-grid">
+                {FRAMEWORK_SECTIONS.map((sec) => (
+                  <div key={sec.id} className="m-panel m-fw-card">
+                    <div className="m-fw-top">
+                      <strong>{sec.num}</strong>
+                      <span className="m-chip tone-sky">
+                        {sec.officialQuestions} sual · {sec.officialPoints} bal
+                      </span>
+                    </div>
+                    <p>{sec.desc}</p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="m-topic-list">
+                {TOPICS_CATALOG.map((top) => (
+                  <div key={top.id} className={`m-panel m-topic ${top.active ? '' : 'is-locked'}`}>
+                    <div className="m-topic-head">
+                      <span className="m-chip">{top.topicCode}</span>
+                      {top.active ? (
+                        <span className="m-status is-completed">Aktiv</span>
+                      ) : (
+                        <span className="m-status is-not_started">Tezliklə</span>
+                      )}
+                    </div>
+                    <h3 className="m-topic-title">{top.title}</h3>
+                    <p className="m-topic-sec">
+                      {top.sectionNum}: {top.sectionTitle}
+                    </p>
+                    <p className="m-topic-desc">{top.description}</p>
+
+                    {top.id === '1.1' && (
+                      <div className="m-topic-stats">
+                        <span>Güvən <b>{totalGuvenAnswered}/95</b></span>
+                        <span>Dərslik <b>{totalTextbookAnswered}/80</b></span>
+                        <span>Müəllim <b>{totalTeacherAnswered}/165</b></span>
+                        <span>Kartlar <b>{knownFlashcardsCount}/65</b></span>
+                      </div>
+                    )}
+
+                    {top.active && (
+                      <button
+                        className="m-btn m-btn-primary"
                         onClick={() => {
                           setSelectedTopicId(top.id);
                           setSelectedVariant(null);
-                          setPortalView('topic_detail');
+                          goTo('topic_detail');
                         }}
                       >
-                        Mövzu 1.1 Sınaqları və Konspektə Daxil Ol →
-                      </button>
-                    ) : (
-                      <button className="btn-topic-disabled" disabled>
-                        Mövzu 1.1 Tamamlandıqdan Sonra Açılacaq
+                        Mövzuya keç
+                        <Icon name="arrowRight" size={16} />
                       </button>
                     )}
                   </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : portalView === 'mistakes' ? (
-          /* ======================================================== */
-          /* VIEW 3: DEDICATED MISTAKE NOTEBOOK (SƏHV DƏFTƏRİM)       */
-          /* ======================================================== */
-          <div className="clean-list-container">
-            <div className="clean-list-header">
-              <div>
-                <h2 className="clean-section-title">Səhv Dəftərim və Rəsmi MİQ Bal Hesablayıcısı (4 Səhv = -1 Düz)</h2>
-                <p className="clean-section-sub">
-                  Ümumi Baza: {globalMiqSummary.answered}/{globalMiqSummary.total} sual işlənilib • Düzgün: {globalMiqSummary.correct} • Səhv: {globalMiqSummary.wrong}
-                </p>
+                ))}
               </div>
-              {allWrongQuestions.length > 0 && (
-                <div className="clean-quick-actions">
+            </div>
+          ) : portalView === 'mistakes' ? (
+            /* ======================== MISTAKE NOTEBOOK ======================== */
+            <div className="m-stack">
+              <div className="m-stats">
+                <div className="m-stat">
+                  <span className="m-stat-label">İşlənən</span>
+                  <strong className="m-stat-value">
+                    {globalMiqSummary.answered}
+                    <small> / {globalMiqSummary.total}</small>
+                  </strong>
+                </div>
+                <div className="m-stat">
+                  <span className="m-stat-label">Düz</span>
+                  <strong className="m-stat-value m-good">{globalMiqSummary.correct}</strong>
+                </div>
+                <div className="m-stat">
+                  <span className="m-stat-label">Səhv</span>
+                  <strong className="m-stat-value m-bad">{globalMiqSummary.wrong}</strong>
+                </div>
+                <div className="m-stat">
+                  <span className="m-stat-label">Təxmini MİQ balı</span>
+                  <strong className="m-stat-value">
+                    {globalMiqSummary.miqEquiv80}
+                    <small> / 80</small>
+                  </strong>
+                  <span className="m-stat-sub">Xalis düz: {globalMiqSummary.netCorrect}</span>
+                </div>
+              </div>
+
+              <section className="m-section">
+                <div className="m-section-head">
+                  <div>
+                    <h2 className="m-section-title">Səhv cavabladığın suallar</h2>
+                    <p className="m-section-sub">Hər birinin düzgün cavabı və izahı ilə</p>
+                  </div>
+                  {allWrongQuestions.length > 0 && (
+                    <button className="m-btn m-btn-primary" onClick={() => handleSelectVariant('WRONG-ALL', 'study', 0)}>
+                      Hamısını təkrar işlə ({allWrongQuestions.length})
+                    </button>
+                  )}
+                </div>
+
+                {allWrongQuestions.length > 0 ? (
+                  <div className="m-mistakes">
+                    {allWrongQuestions.map((wq) => (
+                      <div key={wq.id} className="m-panel m-mistake">
+                        <div className="m-mistake-head">
+                          <span className="m-chip">{wq.id}</span>
+                          <span className="m-mistake-ans">
+                            <span className="m-bad">Sən: {userAnswers[wq.id]}</span>
+                            <span className="m-good">Düz: {wq.correct}</span>
+                          </span>
+                        </div>
+                        <p className="m-mistake-q">{wq.question}</p>
+                        <p className="m-mistake-exp">{wq.explanation}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="m-empty">Səhv dəftərində hələ sual yoxdur. Əla!</div>
+                )}
+              </section>
+            </div>
+          ) : (
+            /* ======================== TOPIC 1.1 HUB ======================== */
+            <div className="m-stack">
+              {renderContinueCard(true)}
+
+              <div className="m-tabs" role="tablist">
+                {HUB_TABS.map((tab) => (
                   <button
-                    className="btn-row-study"
-                    onClick={() => handleSelectVariant('WRONG-ALL', 'study', 0)}
+                    key={tab.id}
+                    role="tab"
+                    aria-selected={hubTab === tab.id}
+                    className={hubTab === tab.id ? 'active' : ''}
+                    onClick={() => setHubTab(tab.id)}
                   >
-                    Bütün Səhvləri Təkrar İşlə ({allWrongQuestions.length} Sual)
+                    {tab.label}
+                    {tab.count && <em>{tab.count}</em>}
                   </button>
+                ))}
+              </div>
+
+              {BANK_TABS[hubTab] && (
+                <section className="m-section">
+                  <div className="m-section-head">
+                    <div>
+                      <h2 className="m-section-title">{BANK_TABS[hubTab].title}</h2>
+                      <p className="m-section-sub">{BANK_TABS[hubTab].sub}</p>
+                    </div>
+                    <div className="m-head-actions">
+                      <button
+                        className="m-btn m-btn-ghost"
+                        onClick={() => handleSelectVariant(BANK_TABS[hubTab].mega.code, 'exam', 0)}
+                      >
+                        <Icon name="shuffle" size={15} />
+                        {BANK_TABS[hubTab].mega.label}
+                      </button>
+                      <button
+                        className="m-btn m-btn-ghost"
+                        onClick={() => handleSelectVariant(BANK_TABS[hubTab].all.code, 'study')}
+                      >
+                        {BANK_TABS[hubTab].all.label}
+                      </button>
+                    </div>
+                  </div>
+                  {renderPackGrid(allTopic1PacksSummary.filter((p) => p.bankName === BANK_TABS[hubTab].bank))}
+                </section>
+              )}
+
+              {hubTab === 'study' && (
+                <div className="study-hub-container">
+                  <section className="m-section">
+                    <div className="m-section-head">
+                      <div>
+                        <h2 className="m-section-title">Səsli dərslər</h2>
+                        <p className="m-section-sub">Mövzu 1.1 üzrə dərslik və metodik vəsait materialları</p>
+                      </div>
+                      <a
+                        href="/Movzu_1_1_Konspekt.pdf"
+                        download="Movzu_1_1_Cografi_Kesfler_Konspekt.pdf"
+                        className="m-btn m-btn-primary"
+                      >
+                        PDF konspekt (16 səh.)
+                      </a>
+                    </div>
+
+                    <div className="audio-cards-grid">
+                      {TOPIC_1_AUDIO.map((aud) => (
+                        <div key={aud.id} className="audio-player-card">
+                          <div className="audio-card-info">
+                            <strong>{aud.title}</strong>
+                            <span>{aud.desc}</span>
+                          </div>
+                          <audio controls preload="none" className="audio-element">
+                            <source src={aud.src} type="audio/mpeg" />
+                          </audio>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  <div className="m-study-filter">
+                    <input
+                      type="search"
+                      className="m-input"
+                      placeholder="Konspektdə axtar: Biruni, Merkator, CİS…"
+                      value={studySearch}
+                      onChange={(e) => setStudySearch(e.target.value)}
+                    />
+                    <div className="m-filter m-filter-scroll">
+                      <button
+                        className={activeChapterId === 'ALL' ? 'active' : ''}
+                        onClick={() => setActiveChapterId('ALL')}
+                      >
+                        Hamısı
+                      </button>
+                      {TOPIC_1_CHAPTERS.map((ch) => (
+                        <button
+                          key={ch.id}
+                          className={activeChapterId === ch.id ? 'active' : ''}
+                          onClick={() => setActiveChapterId(ch.id)}
+                        >
+                          {ch.code}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="study-chapters-list">
+                    {filteredChapters.map((ch) => (
+                      <article key={ch.id} className="study-chapter-card">
+                        <div className="study-chapter-meta">
+                          <span className="study-fw-badge">{ch.frameworkGroup}</span>
+                          <span className="study-code-badge">Fəsil {ch.code}</span>
+                        </div>
+                        <div className="study-html-content" dangerouslySetInnerHTML={{ __html: ch.html }} />
+                      </article>
+                    ))}
+                    {filteredChapters.length === 0 && <div className="m-empty">Axtarışa uyğun fəsil tapılmadı.</div>}
+                  </div>
                 </div>
               )}
-            </div>
 
-            <div className="miq-formula-banner">
-              <div className="miq-stat-item">
-                <span className="miq-stat-lbl">İşlənilən Suallar</span>
-                <strong className="miq-stat-val">{globalMiqSummary.answered} / 340</strong>
-              </div>
-              <div className="miq-stat-item">
-                <span className="miq-stat-lbl">Düzgün Cavablar</span>
-                <strong className="miq-stat-val text-green">{globalMiqSummary.correct}</strong>
-              </div>
-              <div className="miq-stat-item">
-                <span className="miq-stat-lbl">Səhv Cavablar (-1/4 cərimə)</span>
-                <strong className="miq-stat-val text-red">{globalMiqSummary.wrong}</strong>
-              </div>
-              <div className="miq-stat-item">
-                <span className="miq-stat-lbl">Xalis Düzgün Cavab</span>
-                <strong className="miq-stat-val">{globalMiqSummary.netCorrect}</strong>
-              </div>
-              <div className="miq-stat-item">
-                <span className="miq-stat-lbl">80 İxtisas Balı Ekvivalenti</span>
-                <strong className="miq-stat-val text-blue">{globalMiqSummary.miqEquiv80} / 80</strong>
-              </div>
-            </div>
-
-            {allWrongQuestions.length > 0 ? (
-              <div className="mistake-notebook-section">
-                <h3 className="clean-section-title" style={{ marginBottom: '12px' }}>
-                  Səhv Cavablandırdığınız Suallar ({allWrongQuestions.length})
-                </h3>
-                <div className="mistake-cards-list">
-                  {allWrongQuestions.map((wq) => (
-                    <div key={wq.id} className="mistake-item-card">
-                      <div className="mistake-item-top">
-                        <span className="q-badge">{wq.id}</span>
-                        <span className="mistake-ans-tags">
-                          Seçiminiz: <strong className="text-red">{userAnswers[wq.id]}</strong> • Düzgün Cavab: <strong className="text-green">{wq.correct}</strong>
-                        </span>
-                      </div>
-                      <p className="mistake-q-text" style={{ whiteSpace: 'pre-line' }}>{wq.question}</p>
-                      <p className="mistake-exp-text">{wq.explanation}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <p className="clean-section-sub" style={{ textAlign: 'center', padding: '24px 0' }}>
-                Hazırda Səhv Dəftərinizdə sual yoxdur.
-              </p>
-            )}
-          </div>
-        ) : (
-          /* ======================================================== */
-          /* VIEW 4: TOPIC 1.1 6-TAB MASTERY HUB                      */
-          /* ======================================================== */
-          <div className="simple-menu-screen">
-            {renderResumeBanner()}
-
-            <div className="clean-tabs">
-              <button
-                className={`clean-tab ${hubTab === 'guven' ? 'active' : ''}`}
-                onClick={() => setHubTab('guven')}
-              >
-                Güvən 2025 ({totalGuvenAnswered}/95)
-              </button>
-              <button
-                className={`clean-tab ${hubTab === 'textbook' ? 'active' : ''}`}
-                onClick={() => setHubTab('textbook')}
-              >
-                Dərslik ({totalTextbookAnswered}/80)
-              </button>
-              <button
-                className={`clean-tab ${hubTab === 'teacher' ? 'active' : ''}`}
-                onClick={() => setHubTab('teacher')}
-              >
-                Müəllim ({totalTeacherAnswered}/165)
-              </button>
-              <button
-                className={`clean-tab ${hubTab === 'study' ? 'active' : ''}`}
-                onClick={() => setHubTab('study')}
-              >
-                Konspekt və Səsli Dərs
-              </button>
-              <button
-                className={`clean-tab ${hubTab === 'flashcards' ? 'active' : ''}`}
-                onClick={() => setHubTab('flashcards')}
-              >
-                Kartlar ({knownFlashcardsCount}/65)
-              </button>
-              <button
-                className={`clean-tab ${hubTab === 'analytics' ? 'active' : ''}`}
-                onClick={() => setHubTab('analytics')}
-              >
-                Diaqnostika
-              </button>
-            </div>
-
-            {hubTab === 'study' && (
-              <div className="study-hub-container">
-                <div className="audio-lessons-bar">
-                  <div className="audio-bar-header">
+              {hubTab === 'flashcards' && (
+                <section className="m-section">
+                  <div className="m-section-head">
                     <div>
-                      <h2 className="clean-section-title">Səsli Dərs və Tam Akademik Konspekt (6–11-ci Siniflər)</h2>
-                      <p className="clean-section-sub">
-                        Rəsmi MİQ Çərçivəsinin Mövzu 1.1 bloku üzrə bütün dərslik və metodik vəsait materialları
+                      <h2 className="m-section-title">Yaddaş kartları</h2>
+                      <p className="m-section-sub">
+                        <span className="m-good">{knownFlashcardsCount} bilirəm</span> ·{' '}
+                        <span className="m-warn">{reviewFlashcardsCount} təkrar</span> · {TOPIC_1_FLASHCARDS.length} kart
                       </p>
                     </div>
-                    <a
-                      href="/Movzu_1_1_Konspekt.pdf"
-                      download="Movzu_1_1_Cografi_Kesfler_Konspekt.pdf"
-                      className="btn-download-pdf"
-                    >
-                      PDF Konspekti Endir (16 səh.)
-                    </a>
-                  </div>
-
-                  <div className="audio-cards-grid">
-                    {TOPIC_1_AUDIO.map((aud) => (
-                      <div key={aud.id} className="audio-player-card">
-                        <div className="audio-card-info">
-                          <strong>{aud.title}</strong>
-                          <span>{aud.desc}</span>
-                        </div>
-                        <audio controls preload="none" className="audio-element">
-                          <source src={aud.src} type="audio/mpeg" />
-                        </audio>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="study-filter-bar">
-                  <input
-                    type="text"
-                    className="study-search-input"
-                    placeholder="Konspekt daxilində axtar (məs: Biruni, Merkator, ştanger, Worldmapper, CİS)..."
-                    value={studySearch}
-                    onChange={(e) => setStudySearch(e.target.value)}
-                  />
-                  <div className="chapter-pills-row">
                     <button
-                      className={`chapter-pill ${activeChapterId === 'ALL' ? 'active' : ''}`}
-                      onClick={() => setActiveChapterId('ALL')}
-                    >
-                      Bütün Fəsillər (1.1–1.8)
-                    </button>
-                    {TOPIC_1_CHAPTERS.map((ch) => (
-                      <button
-                        key={ch.id}
-                        className={`chapter-pill ${activeChapterId === ch.id ? 'active' : ''}`}
-                        onClick={() => setActiveChapterId(ch.id)}
-                      >
-                        Fəsil {ch.code}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="study-chapters-list">
-                  {filteredChapters.map((ch) => (
-                    <article key={ch.id} className="study-chapter-card">
-                      <div className="study-chapter-meta">
-                        <span className="study-fw-badge">{ch.frameworkGroup}</span>
-                        <span className="study-code-badge">Fəsil {ch.code}</span>
-                      </div>
-                      <div
-                        className="study-html-content"
-                        dangerouslySetInnerHTML={{ __html: ch.html }}
-                      />
-                    </article>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {hubTab === 'flashcards' && (
-              <div className="clean-list-container">
-                <div className="clean-list-header">
-                  <div>
-                    <h2 className="clean-section-title">Aktiv Yaddaş Kartları (65 Suallıq Sürətli Əzbərləmə Bazası)</h2>
-                    <p className="clean-section-sub">
-                      Əzbərlədiyiniz kartlar: <strong>{knownFlashcardsCount}</strong> • Təkrar soruşulacaq kartlar: <strong>{reviewFlashcardsCount}</strong>
-                    </p>
-                  </div>
-                  <div className="clean-quick-actions">
-                    <button
-                      className="btn-quick-outline"
+                      className="m-btn m-btn-ghost"
                       onClick={() => {
                         if (window.confirm('Yaddaş kartları üzrə işarələmələri sıfırlamaq istəyirsiniz?')) {
                           setFcStatus({});
@@ -1832,251 +1967,166 @@ export default function App() {
                         }
                       }}
                     >
-                      Kartları Sıfırla
+                      <Icon name="reset" size={15} />
+                      Sıfırla
                     </button>
                   </div>
-                </div>
 
-                <div className="chapter-pills-row" style={{ marginBottom: '16px' }}>
-                  {[
-                    { id: 'ALL', label: `Hamısı (${TOPIC_1_FLASHCARDS.length})` },
-                    { id: '1. Coğrafi kəşflər və tədqiqatlar', label: '1. Coğrafi kəşflər (25)' },
-                    { id: '2. Azərbaycanda coğrafiya elminin inkişafı', label: '2. Azərbaycanda coğrafiya (20)' },
-                    { id: '3. Coğrafiya elminin sahələri və müasir coğrafi biliklərin əldə edilməsi', label: '3. Sahələr, Metodlar və CİS (20)' },
-                    { id: 'REVIEW', label: `Təkrar Soruşulanlar (${reviewFlashcardsCount})` },
-                    { id: 'KNOWN', label: `Bilirəm (${knownFlashcardsCount})` }
-                  ].map((tab) => (
-                    <button
-                      key={tab.id}
-                      className={`chapter-pill ${fcCategory === tab.id ? 'active' : ''}`}
-                      onClick={() => {
-                        setFcCategory(tab.id);
-                        setFcIndex(0);
-                        setFcFlipped(false);
-                      }}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-
-                {currentFlashcard ? (
-                  <div className="flashcard-stage">
-                    <div
-                      className={`flashcard-box ${fcFlipped ? 'is-flipped' : ''}`}
-                      onClick={() => setFcFlipped(!fcFlipped)}
-                    >
-                      <div className="fc-top-bar">
-                        <span className="fc-cat-tag">{currentFlashcard.category}</span>
-                        <span className="fc-grade-tag">{currentFlashcard.grade} • Kart {fcIndex + 1} / {filteredFlashcards.length}</span>
-                      </div>
-
-                      <div className="fc-body-content">
-                        <span className="fc-side-label">{fcFlipped ? 'DƏRSLİK CAVABI:' : 'SUAL:'}</span>
-                        <p className="fc-main-text" style={{ whiteSpace: 'pre-line' }}>
-                          {fcFlipped ? currentFlashcard.back : currentFlashcard.front}
-                        </p>
-                      </div>
-
-                      <div className="fc-bottom-hint">
-                        <span>{fcFlipped ? 'Suala qayıtmaq üçün karta toxunun' : 'Cavabı görmək üçün karta toxunun'}</span>
-                      </div>
-                    </div>
-
-                    <div className="fc-controls-row">
+                  <div className="m-filter m-filter-scroll">
+                    {[
+                      { id: 'ALL', label: 'Hamısı', count: TOPIC_1_FLASHCARDS.length },
+                      { id: '1. Coğrafi kəşflər və tədqiqatlar', label: 'Kəşflər', count: 25 },
+                      { id: '2. Azərbaycanda coğrafiya elminin inkişafı', label: 'Azərbaycan', count: 20 },
+                      {
+                        id: '3. Coğrafiya elminin sahələri və müasir coğrafi biliklərin əldə edilməsi',
+                        label: 'Sahələr və CİS',
+                        count: 20
+                      },
+                      { id: 'REVIEW', label: 'Təkrar', count: reviewFlashcardsCount },
+                      { id: 'KNOWN', label: 'Bilirəm', count: knownFlashcardsCount }
+                    ].map((tab) => (
                       <button
-                        className="btn-nav"
-                        disabled={fcIndex === 0}
+                        key={tab.id}
+                        className={fcCategory === tab.id ? 'active' : ''}
                         onClick={() => {
-                          setFcIndex((i) => Math.max(0, i - 1));
+                          setFcCategory(tab.id);
+                          setFcIndex(0);
                           setFcFlipped(false);
                         }}
                       >
-                        ← Əvvəlki Kart
+                        {tab.label}
+                        <em>{tab.count}</em>
+                      </button>
+                    ))}
+                  </div>
+
+                  {currentFlashcard ? (
+                    <div className="m-fc">
+                      <button
+                        className={`m-fc-card ${fcFlipped ? 'is-flipped' : ''}`}
+                        onClick={() => setFcFlipped(!fcFlipped)}
+                      >
+                        <span className="m-fc-top">
+                          <span className="m-chip tone-teal">{currentFlashcard.category.replace(/^\d+\.\s*/, '')}</span>
+                          <span className="m-muted">
+                            {fcIndex + 1} / {filteredFlashcards.length}
+                          </span>
+                        </span>
+                        <span className="m-eyebrow">{fcFlipped ? 'Cavab' : 'Sual'}</span>
+                        <span className="m-fc-text">{fcFlipped ? currentFlashcard.back : currentFlashcard.front}</span>
+                        <span className="m-fc-hint">{fcFlipped ? 'Suala qayıtmaq üçün toxun' : 'Cavabı görmək üçün toxun'}</span>
                       </button>
 
-                      <div className="fc-Verdict-buttons">
+                      <div className="m-fc-controls">
                         <button
-                          className="btn-fc-review"
+                          className="m-icon-btn"
+                          aria-label="Əvvəlki kart"
+                          disabled={fcIndex === 0}
+                          onClick={() => {
+                            setFcIndex((i) => Math.max(0, i - 1));
+                            setFcFlipped(false);
+                          }}
+                        >
+                          <Icon name="arrowLeft" size={16} />
+                        </button>
+                        <button
+                          className="m-btn m-btn-amber"
                           onClick={() => {
                             setFcStatus((prev) => ({ ...prev, [currentFlashcard.id]: 'review' }));
                             setFcFlipped(false);
                             if (fcIndex < filteredFlashcards.length - 1) setFcIndex((i) => i + 1);
                           }}
                         >
-                          Təkrar Soruş
+                          Təkrar soruş
                         </button>
                         <button
-                          className="btn-fc-known"
+                          className="m-btn m-btn-green"
                           onClick={() => {
                             setFcStatus((prev) => ({ ...prev, [currentFlashcard.id]: 'known' }));
                             setFcFlipped(false);
                             if (fcIndex < filteredFlashcards.length - 1) setFcIndex((i) => i + 1);
                           }}
                         >
-                          Bilirəm (Əzbərlədim)
+                          Bilirəm
+                        </button>
+                        <button
+                          className="m-icon-btn"
+                          aria-label="Növbəti kart"
+                          disabled={fcIndex >= filteredFlashcards.length - 1}
+                          onClick={() => {
+                            setFcIndex((i) => Math.min(filteredFlashcards.length - 1, i + 1));
+                            setFcFlipped(false);
+                          }}
+                        >
+                          <Icon name="arrowRight" size={16} />
                         </button>
                       </div>
+                    </div>
+                  ) : (
+                    <div className="m-empty">Bu kateqoriyada hazırda kart yoxdur.</div>
+                  )}
+                </section>
+              )}
 
-                      <button
-                        className="btn-nav btn-nav-primary"
-                        disabled={fcIndex >= filteredFlashcards.length - 1}
-                        onClick={() => {
-                          setFcIndex((i) => Math.min(filteredFlashcards.length - 1, i + 1));
-                          setFcFlipped(false);
-                        }}
-                      >
-                        Növbəti Kart →
-                      </button>
+              {hubTab === 'analytics' && (
+                <section className="m-section">
+                  <div className="m-section-head">
+                    <div>
+                      <h2 className="m-section-title">Mənimsəmə diaqnostikası</h2>
+                      <p className="m-section-sub">Dərslik bazasının alt-bölmələri üzrə</p>
                     </div>
                   </div>
-                ) : (
-                  <div className="empty-state-box">
-                    <p>Bu kateqoriyada hazırda kart yoxdur.</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {hubTab === 'guven' && (
-              <div className="clean-list-container">
-                <div className="clean-list-header">
-                  <div>
-                    <h2 className="clean-section-title">Güvən Nəşrləri 2025 — Test Bankı (95 Sual)</h2>
-                    <p className="clean-section-sub">
-                      «Coğrafiya Tapşırıqlar Toplusu 2025» kitabının 1-ci mövzusu üzrə A, B, C qrup və açıq test tapşırıqları • Cəmi işlənilib: <strong>{totalGuvenAnswered}/95</strong>
-                    </p>
-                  </div>
-                  <div className="clean-quick-actions">
-                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('GV-MEGA', 'exam', 0)}>
-                      Qarışıq Sınaq (25 Sual)
-                    </button>
-                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('GV-ALL', 'study')}>
-                      Tam Güvən Bazası (95 Sual)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="clean-rows">
-                  {GUVEN_QUIZZES.map((gq) =>
-                    renderQuizPackRow(
-                      gq.shortCode,
-                      gq.code,
-                      'badge-indigo',
-                      gq.title,
-                      `${gq.questionCount} sual (${gq.imageCount} sxem/xəritəli)`,
-                      gq.questions
-                    )
-                  )}
-                </div>
-              </div>
-            )}
-
-            {hubTab === 'textbook' && (
-              <div className="clean-list-container">
-                <div className="clean-list-header">
-                  <div>
-                    <h2 className="clean-section-title">Əsas Dərslik Bazası (Variant A, B, C, D)</h2>
-                    <p className="clean-section-sub">
-                      6–11-ci sinif dərslikləri və metodik vəsaitlər əsasında 80 sual • Cəmi işlənilib: <strong>{totalTextbookAnswered}/80</strong>
-                    </p>
-                  </div>
-                  <div className="clean-quick-actions">
-                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('MEGA', 'exam', 0)}>
-                      Qarışıq Sınaq (20 Sual)
-                    </button>
-                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('ALL', 'study')}>
-                      Hamısını İşlə (80 Sual)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="clean-rows">
-                  {VARIANTS_META.map((vm) =>
-                    renderQuizPackRow(
-                      vm.code,
-                      vm.name,
-                      '',
-                      vm.subtitle,
-                      `${vm.qCount} sual`,
-                      QUIZ_QUESTIONS.filter((q) => q.variant === vm.code)
-                    )
-                  )}
-                </div>
-              </div>
-            )}
-
-            {hubTab === 'teacher' && (
-              <div className="clean-list-container">
-                <div className="clean-list-header">
-                  <div>
-                    <h2 className="clean-section-title">Müəllim Sınaqları (Google Forms Bazası)</h2>
-                    <p className="clean-section-sub">
-                      Dərs qrupunda paylaşılan 4 sınaq • 165 sual • Cəmi işlənilib: <strong>{totalTeacherAnswered}/165</strong>
-                    </p>
-                  </div>
-                  <div className="clean-quick-actions">
-                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('GF-MEGA', 'exam', 0)}>
-                      Qarışıq Sınaq (25 Sual)
-                    </button>
-                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('GF-ALL', 'study')}>
-                      Hamısını İşlə (165 Sual)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="clean-rows">
-                  {teacherQuizzesTopic1.map((tq, idx) =>
-                    renderQuizPackRow(
-                      tq.shortCode,
-                      `Sınaq ${idx + 1}`,
-                      'badge-teal',
-                      tq.title,
-                      `${tq.questionCount} sual (${tq.imageCount} şəkilli)`,
-                      tq.questions,
-                      'btn-teal'
-                    )
-                  )}
-                </div>
-              </div>
-            )}
-
-            {hubTab === 'analytics' && (
-              <div className="clean-list-container">
-                <h3 className="clean-section-title" style={{ marginBottom: '12px' }}>
-                  Dərslik Alt-Bölmələri üzrə Mənimsəmə Diaqnostikası
-                </h3>
-                <div className="category-list">
-                  {categoryAnalytics.map((cat) => (
-                    <div key={cat.name} className="cat-card">
-                      <div className="cat-header">
-                        <div>
-                          <h4 className="cat-title">{cat.name}</h4>
-                          <span className="cat-meta">
-                            {cat.total} sual • {cat.answered} işlənilib ({cat.correct} düz, {cat.wrong} səhv)
-                          </span>
+                  <div className="m-diag">
+                    {categoryAnalytics.map((cat) => (
+                      <div key={cat.name} className="m-panel m-diag-row">
+                        <div className="m-diag-head">
+                          <div>
+                            <h4>{cat.name}</h4>
+                            <span className="m-muted">
+                              {cat.answered}/{cat.total} işlənib · {cat.correct} düz · {cat.wrong} səhv
+                            </span>
+                          </div>
+                          <strong>{cat.percentage}%</strong>
                         </div>
-                        <span className="cat-pct">{cat.percentage}%</span>
-                      </div>
-                      <div className="cat-bar-bg">
-                        <div className="cat-bar-fill fill-mastered" style={{ width: `${cat.percentage}%` }} />
-                      </div>
-                      {cat.remedyList.length > 0 && (
-                        <div className="cat-prescription">
-                          <span className="presc-label">Oxunmalı dərslik:</span>
-                          {cat.remedyList.map((bk, i) => (
-                            <span key={i} className="presc-book">{bk}</span>
-                          ))}
+                        <div className="m-bar">
+                          <div className="m-bar-fill is-completed" style={{ width: `${cat.percentage}%` }} />
                         </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </main>
+                        {cat.remedyList.length > 0 && (
+                          <div className="m-diag-remedy">
+                            <span>Oxu:</span>
+                            {cat.remedyList.map((bk, i) => (
+                              <span key={i} className="m-chip">
+                                {bk}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* ======================== BOTTOM NAV (mobile) ======================== */}
+      {selectedVariant === null && (
+        <nav className="m-bottomnav">
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              className={portalView === item.id ? 'active' : ''}
+              onClick={() => goTo(item.id)}
+            >
+              <Icon name={item.icon} size={20} />
+              <span>{item.label}</span>
+              {item.id === 'mistakes' && allWrongQuestions.length > 0 && <em>{allWrongQuestions.length}</em>}
+            </button>
+          ))}
+        </nav>
+      )}
     </div>
   );
 }
