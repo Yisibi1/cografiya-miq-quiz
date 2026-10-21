@@ -47,13 +47,14 @@ export const TOPICS_CATALOG = [
     sectionNum: 'MƏZMUN SAHƏSİ 1 • 10 SUAL (20 BAL)',
     sectionTitle: 'COĞRAFİ MƏKAN',
     topicCode: 'Mövzu 1.2',
-    title: 'Məkan və Məkanın Miqyası',
-    subtitle: 'Məkan anlayışı, üfüqün cəhətləri, azimut, məsafə və miqyas hesablamaları',
-    description: 'Məkan. Məkanın miqyası. Ədədi, izahlı və xətti miqyas, sahə və məsafə məsələləri.',
-    questionCount: 0,
-    grades: '6, 7, 8-ci siniflər',
-    active: false,
-    badge: 'Növbəti mərhələdə'
+    title: 'Məkan, Miqyas, Plan, Azimut, Paletka və Horizontallar',
+    subtitle: 'Tam Konspekt (8 Fəsil) + Səsli İzah + 70 Yaddaş Kartı + 362 Test Sualı',
+    description:
+      'Məkan (fiziki, xəyali, virtual). Məkanın miqyası (lokal, regional, qlobal; 5 pilləli region iyerarxiyası). Coğrafi mövqe (4-lü və 6-lı şəbəkə). Miqyas, plan, şərti işarələr, azimut, paletka və horizontallar (6–11-ci sinif dərslikləri, Osman müəllim və Güvən 2025 əsasında).',
+    questionCount: 362,
+    flashcardCount: 70,
+    grades: '6, 7, 8, 9, 10, 11-ci siniflər',
+    active: true
   },
   {
     id: '1.3',

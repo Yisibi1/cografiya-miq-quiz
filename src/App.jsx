@@ -5,6 +5,11 @@ import { teacherQuizzesTopic1 } from './data/teacherQuizzes';
 import { GUVEN_QUIZZES } from './data/guvenQuizzes';
 import { TOPIC_1_AUDIO, TOPIC_1_CHAPTERS } from './data/topic1StudyData';
 import { TOPIC_1_FLASHCARDS } from './data/topic1Flashcards';
+import { QUIZ_QUESTIONS_1_2 } from './data/topic1_2TextbookQuizzes';
+import { teacherQuizzesTopic1_2 } from './data/topic1_2TeacherQuizzes';
+import { GUVEN_QUIZZES_1_2 } from './data/topic1_2GuvenQuizzes';
+import { TOPIC_1_2_AUDIO, TOPIC_1_2_CHAPTERS } from './data/topic1_2StudyData';
+import { TOPIC_1_2_FLASHCARDS } from './data/topic1_2Flashcards';
 import {
   loginCloudAccount,
   registerCloudAccount,
@@ -14,7 +19,12 @@ import {
 
 const ALL_TEACHER_QUESTIONS = teacherQuizzesTopic1.flatMap((qGroup) => qGroup.questions);
 const ALL_GUVEN_QUESTIONS = GUVEN_QUIZZES.flatMap((qGroup) => qGroup.questions);
-const ALL_COMBINED_QUESTIONS = [...QUIZ_QUESTIONS, ...ALL_TEACHER_QUESTIONS, ...ALL_GUVEN_QUESTIONS];
+const ALL_TEACHER_QUESTIONS_1_2 = teacherQuizzesTopic1_2.flatMap((qGroup) => qGroup.questions);
+const ALL_GUVEN_QUESTIONS_1_2 = GUVEN_QUIZZES_1_2.flatMap((qGroup) => qGroup.questions);
+
+const ALL_TOPIC_1_1_QUESTIONS = [...QUIZ_QUESTIONS, ...ALL_TEACHER_QUESTIONS, ...ALL_GUVEN_QUESTIONS];
+const ALL_TOPIC_1_2_QUESTIONS = [...QUIZ_QUESTIONS_1_2, ...ALL_TEACHER_QUESTIONS_1_2, ...ALL_GUVEN_QUESTIONS_1_2];
+const ALL_COMBINED_QUESTIONS = [...ALL_TOPIC_1_1_QUESTIONS, ...ALL_TOPIC_1_2_QUESTIONS];
 
 function shuffleArray(array) {
   const arr = [...array];
@@ -48,6 +58,33 @@ const VARIANTS_META = [
     code: 'D',
     name: 'Variant D',
     subtitle: 'Modelləşdirmə, Anamorfoz və CİS',
+    qCount: 20
+  }
+];
+
+const VARIANTS_META_1_2 = [
+  {
+    code: 'T2-A',
+    name: 'Variant A (1.2)',
+    subtitle: 'Məkanın 3 Növü, 5 Xüsusiyyəti, Ağdam və Bakı',
+    qCount: 20
+  },
+  {
+    code: 'T2-B',
+    name: 'Variant B (1.2)',
+    subtitle: 'Məkanın Miqyası, 5 Pilləli Regionlar və Dəhlizlər',
+    qCount: 20
+  },
+  {
+    code: 'T2-C',
+    name: 'Variant C (1.2)',
+    subtitle: 'Coğrafi Mövqe, 4-lü və 6-lı Şəbəkə, QMS və Boğazlar',
+    qCount: 20
+  },
+  {
+    code: 'T2-D',
+    name: 'Variant D (1.2)',
+    subtitle: 'Miqyas, Plan, Şərti İşarələr, Azimut, Paletka və Horizontallar',
     qCount: 20
   }
 ];
@@ -112,7 +149,8 @@ function ProgressRing({ value, max, size = 72, stroke = 7, children }) {
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Kabinet', icon: 'home' },
-  { id: 'topic_detail', label: 'Mövzu 1.1', icon: 'layers' },
+  { id: 'topic_1_1', label: 'Mövzu 1.1', icon: 'layers' },
+  { id: 'topic_1_2', label: 'Mövzu 1.2', icon: 'layers' },
   { id: 'topics', label: 'Çərçivə', icon: 'map' },
   { id: 'mistakes', label: 'Səhvlər', icon: 'notebook' }
 ];
@@ -135,16 +173,18 @@ export default function App() {
   // Top-level portal navigation when logged in:
   // 'dashboard' | 'topics' | 'topic_detail' | 'mistakes'
   const [portalView, setPortalView] = useState('dashboard');
-  const [selectedTopicId, setSelectedTopicId] = useState('1.1');
-  // Tabs inside Topic 1.1: 'guven' | 'textbook' | 'teacher' | 'study' | 'flashcards' | 'analytics'
+  const [selectedTopicId, setSelectedTopicId] = useState('1.2');
+  // Tabs inside Topic Hub: 'guven' | 'textbook' | 'teacher' | 'study' | 'flashcards' | 'analytics'
   const [hubTab, setHubTab] = useState('guven');
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [mode, setMode] = useState('study'); // 'study' | 'exam'
   const [questions, setQuestions] = useState(QUIZ_QUESTIONS);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Dashboard filter for 12 test packs: 'ALL' | 'in_progress' | 'completed' | 'not_started'
+  // Dashboard filter for test packs: 'ALL' | 'in_progress' | 'completed' | 'not_started'
   const [dashPackFilter, setDashPackFilter] = useState('ALL');
+  // Dashboard topic filter: 'ALL' | '1.1' | '1.2'
+  const [dashTopicFilter, setDashTopicFilter] = useState('ALL');
 
   // Mandatory Authentication & Cloud Profile state
   const [profileCreds, setProfileCreds] = useState(() => {
@@ -226,8 +266,10 @@ export default function App() {
   const [timeLeft, setTimeLeft] = useState(25 * 60);
   const [showQuestionDrawer, setShowQuestionDrawer] = useState(false);
 
-  const isTeacherVariant = selectedVariant && selectedVariant.startsWith('GF-');
-  const isGuvenVariant = selectedVariant && selectedVariant.startsWith('GV-');
+  const isTeacherVariant =
+    selectedVariant && (selectedVariant.startsWith('GF-') || selectedVariant.startsWith('T2-GF-'));
+  const isGuvenVariant =
+    selectedVariant && (selectedVariant.startsWith('GV-') || selectedVariant.startsWith('T2-GV-'));
 
   // Local storage persistence
   useEffect(() => {
@@ -444,13 +486,31 @@ export default function App() {
 
   const getQuizTitleByCode = (varCode) => {
     if (!varCode) return '';
-    if (varCode === 'ALL') return 'Dərslik Bazası (80 Sual)';
-    if (varCode === 'MEGA') return 'Dərslik Qarışıq Sınaq (20 Sual)';
-    if (varCode === 'GF-ALL') return 'Müəllim Bazası (165 Sual)';
-    if (varCode === 'GF-MEGA') return 'Müəllim Qarışıq Sınaq (25 Sual)';
-    if (varCode === 'GV-ALL') return 'Güvən 2025 Tam Baza (95 Sual)';
-    if (varCode === 'GV-MEGA') return 'Güvən 2025 Qarışıq Sınaq (25 Sual)';
+    if (varCode === 'ALL') return 'Mövzu 1.1 • Dərslik Bazası (80 Sual)';
+    if (varCode === 'MEGA') return 'Mövzu 1.1 • Dərslik Qarışıq Sınaq (20 Sual)';
+    if (varCode === 'GF-ALL') return 'Mövzu 1.1 • Müəllim Bazası (165 Sual)';
+    if (varCode === 'GF-MEGA') return 'Mövzu 1.1 • Müəllim Qarışıq Sınaq (25 Sual)';
+    if (varCode === 'GV-ALL') return 'Mövzu 1.1 • Güvən 2025 Tam Baza (95 Sual)';
+    if (varCode === 'GV-MEGA') return 'Mövzu 1.1 • Güvən 2025 Qarışıq Sınaq (25 Sual)';
+    if (varCode === 'T2-ALL') return 'Mövzu 1.2 • Dərslik Bazası (80 Sual)';
+    if (varCode === 'T2-MEGA') return 'Mövzu 1.2 • Dərslik Qarışıq Sınaq (20 Sual)';
+    if (varCode === 'T2-GF-ALL') return 'Mövzu 1.2 • Müəllim Bazası (70 Sual)';
+    if (varCode === 'T2-GF-MEGA') return 'Mövzu 1.2 • Müəllim Qarışıq Sınaq (25 Sual)';
+    if (varCode === 'T2-GV-ALL') return 'Mövzu 1.2 • Güvən 2025 Tam Baza (212 Sual)';
+    if (varCode === 'T2-GV-MEGA') return 'Mövzu 1.2 • Güvən 2025 Qarışıq Sınaq (30 Sual)';
     if (varCode === 'WRONG-ALL') return 'Səhv Dəftəri Təkrarı';
+    if (varCode.startsWith('T2-GF-')) {
+      const found = teacherQuizzesTopic1_2.find((tq) => tq.shortCode === varCode);
+      return found ? found.title : varCode;
+    }
+    if (varCode.startsWith('T2-GV-')) {
+      const found = GUVEN_QUIZZES_1_2.find((gq) => gq.shortCode === varCode);
+      return found ? found.title : varCode;
+    }
+    if (varCode.startsWith('T2-')) {
+      const found = VARIANTS_META_1_2.find((vm) => vm.code === varCode);
+      return found ? `${found.name} — ${found.subtitle}` : `Mövzu 1.2 — ${varCode}`;
+    }
     if (varCode.startsWith('GF-')) {
       const found = teacherQuizzesTopic1.find((tq) => tq.shortCode === varCode);
       return found ? found.title : varCode;
@@ -459,7 +519,7 @@ export default function App() {
       const found = GUVEN_QUIZZES.find((gq) => gq.shortCode === varCode);
       return found ? found.title : varCode;
     }
-    return `Dərslik — Variant ${varCode}`;
+    return `Mövzu 1.1 • Dərslik — Variant ${varCode}`;
   };
 
   // Track currentIndex changes inside active quiz so user can resume from exact question
@@ -509,8 +569,22 @@ export default function App() {
     if (varCode === 'ALL') return QUIZ_QUESTIONS;
     if (varCode === 'GF-ALL') return ALL_TEACHER_QUESTIONS;
     if (varCode === 'GV-ALL') return ALL_GUVEN_QUESTIONS;
+    if (varCode === 'T2-ALL') return QUIZ_QUESTIONS_1_2;
+    if (varCode === 'T2-GF-ALL') return ALL_TEACHER_QUESTIONS_1_2;
+    if (varCode === 'T2-GV-ALL') return ALL_GUVEN_QUESTIONS_1_2;
     if (varCode === 'WRONG-ALL') {
       return ALL_COMBINED_QUESTIONS.filter((q) => userAnswers[q.id] && userAnswers[q.id] !== q.correct);
+    }
+    if (varCode.startsWith('T2-GF-')) {
+      const found = teacherQuizzesTopic1_2.find((tq) => tq.shortCode === varCode);
+      return found ? found.questions : ALL_TEACHER_QUESTIONS_1_2;
+    }
+    if (varCode.startsWith('T2-GV-')) {
+      const found = GUVEN_QUIZZES_1_2.find((gq) => gq.shortCode === varCode);
+      return found ? found.questions : ALL_GUVEN_QUESTIONS_1_2;
+    }
+    if (varCode.startsWith('T2-')) {
+      return QUIZ_QUESTIONS_1_2.filter((q) => q.variant === varCode);
     }
     if (varCode.startsWith('GF-')) {
       const found = teacherQuizzesTopic1.find((tq) => tq.shortCode === varCode);
@@ -533,7 +607,10 @@ export default function App() {
   };
 
   const handleSelectVariant = (varCode, requestedMode = 'study', explicitStartIndex = null) => {
-    setSelectedTopicId('1.1');
+    const isTopic2 = varCode && varCode.startsWith('T2-');
+    if (varCode !== 'WRONG-ALL') {
+      setSelectedTopicId(isTopic2 ? '1.2' : '1.1');
+    }
     setSelectedVariant(varCode);
     setMode(requestedMode);
     setExamSubmitted(false);
@@ -550,6 +627,39 @@ export default function App() {
       const qC = shuffleArray(QUIZ_QUESTIONS.filter((q) => q.variant === 'C')).slice(0, 5);
       const qD = shuffleArray(QUIZ_QUESTIONS.filter((q) => q.variant === 'D')).slice(0, 5);
       targetList = shuffleArray([...qA, ...qB, ...qC, ...qD]);
+      setTimeLeft(25 * 60);
+    } else if (varCode === 'T2-ALL') {
+      targetList = QUIZ_QUESTIONS_1_2;
+      setTimeLeft(100 * 60);
+    } else if (varCode === 'T2-MEGA') {
+      const qA = shuffleArray(QUIZ_QUESTIONS_1_2.filter((q) => q.variant === 'T2-A')).slice(0, 5);
+      const qB = shuffleArray(QUIZ_QUESTIONS_1_2.filter((q) => q.variant === 'T2-B')).slice(0, 5);
+      const qC = shuffleArray(QUIZ_QUESTIONS_1_2.filter((q) => q.variant === 'T2-C')).slice(0, 5);
+      const qD = shuffleArray(QUIZ_QUESTIONS_1_2.filter((q) => q.variant === 'T2-D')).slice(0, 5);
+      targetList = shuffleArray([...qA, ...qB, ...qC, ...qD]);
+      setTimeLeft(25 * 60);
+    } else if (varCode === 'T2-GF-ALL') {
+      targetList = ALL_TEACHER_QUESTIONS_1_2;
+      setTimeLeft(85 * 60);
+    } else if (varCode === 'T2-GF-MEGA') {
+      targetList = shuffleArray(ALL_TEACHER_QUESTIONS_1_2).slice(0, 25);
+      setTimeLeft(30 * 60);
+    } else if (varCode.startsWith('T2-GF-')) {
+      const found = teacherQuizzesTopic1_2.find((tq) => tq.shortCode === varCode);
+      targetList = found ? found.questions : ALL_TEACHER_QUESTIONS_1_2;
+      setTimeLeft(Math.max(20, targetList.length) * 60);
+    } else if (varCode === 'T2-GV-ALL') {
+      targetList = ALL_GUVEN_QUESTIONS_1_2;
+      setTimeLeft(220 * 60);
+    } else if (varCode === 'T2-GV-MEGA') {
+      targetList = shuffleArray(ALL_GUVEN_QUESTIONS_1_2).slice(0, 30);
+      setTimeLeft(35 * 60);
+    } else if (varCode.startsWith('T2-GV-')) {
+      const found = GUVEN_QUIZZES_1_2.find((gq) => gq.shortCode === varCode);
+      targetList = found ? found.questions : ALL_GUVEN_QUESTIONS_1_2;
+      setTimeLeft(Math.max(25, targetList.length) * 60);
+    } else if (varCode.startsWith('T2-')) {
+      targetList = QUIZ_QUESTIONS_1_2.filter((q) => q.variant === varCode);
       setTimeLeft(25 * 60);
     } else if (varCode === 'GF-ALL') {
       targetList = ALL_TEACHER_QUESTIONS;
@@ -781,27 +891,30 @@ export default function App() {
   const allTopic1PacksSummary = useMemo(() => {
     const packs = [
       ...GUVEN_QUIZZES.map((gq) => ({
+        topicId: '1.1',
         code: gq.shortCode,
         bankName: 'Güvən 2025',
-        badgeText: gq.code,
+        badgeText: `M1.1 • ${gq.code}`,
         badgeClass: 'badge-indigo',
         title: gq.title,
         subtitleExtra: `${gq.questionCount} sual (${gq.imageCount} sxemli)`,
         questions: gq.questions
       })),
       ...VARIANTS_META.map((vm) => ({
+        topicId: '1.1',
         code: vm.code,
         bankName: 'Dərslik Bazası',
-        badgeText: vm.name,
+        badgeText: `M1.1 • ${vm.name}`,
         badgeClass: '',
         title: vm.subtitle,
         subtitleExtra: `${vm.qCount} sual`,
         questions: QUIZ_QUESTIONS.filter((q) => q.variant === vm.code)
       })),
       ...teacherQuizzesTopic1.map((tq, idx) => ({
+        topicId: '1.1',
         code: tq.shortCode,
         bankName: 'Müəllim Sınağı',
-        badgeText: `Sınaq ${idx + 1}`,
+        badgeText: `M1.1 • Sınaq ${idx + 1}`,
         badgeClass: 'badge-teal',
         title: tq.title,
         subtitleExtra: `${tq.questionCount} sual (${tq.imageCount} şəkilli)`,
@@ -814,18 +927,75 @@ export default function App() {
     }));
   }, [userAnswers, quizProgress]);
 
-  const completedPacksCount = allTopic1PacksSummary.filter((p) => p.statusType === 'completed').length;
-  const inProgressPacks = allTopic1PacksSummary.filter((p) => p.statusType === 'in_progress');
-  const notStartedPacksCount = allTopic1PacksSummary.filter((p) => p.statusType === 'not_started').length;
+  const allTopic1_2PacksSummary = useMemo(() => {
+    const packs = [
+      ...GUVEN_QUIZZES_1_2.map((gq) => ({
+        topicId: '1.2',
+        code: gq.shortCode,
+        bankName: 'Güvən 2025',
+        badgeText: `M1.2 • ${gq.code}`,
+        badgeClass: 'badge-indigo',
+        title: gq.title,
+        subtitleExtra: `${gq.questionCount} sual (${gq.imageCount} sxemli)`,
+        questions: gq.questions
+      })),
+      ...VARIANTS_META_1_2.map((vm) => ({
+        topicId: '1.2',
+        code: vm.code,
+        bankName: 'Dərslik Bazası',
+        badgeText: vm.name,
+        badgeClass: '',
+        title: vm.subtitle,
+        subtitleExtra: `${vm.qCount} sual`,
+        questions: QUIZ_QUESTIONS_1_2.filter((q) => q.variant === vm.code)
+      })),
+      ...teacherQuizzesTopic1_2.map((tq, idx) => ({
+        topicId: '1.2',
+        code: tq.shortCode,
+        bankName: 'Müəllim Sınağı',
+        badgeText: `M1.2 • Sınaq ${idx + 1}`,
+        badgeClass: 'badge-teal',
+        title: tq.title,
+        subtitleExtra: `${tq.questionCount} sual (${tq.imageCount} şəkilli)`,
+        questions: tq.questions
+      }))
+    ];
+    return packs.map((p) => ({
+      ...p,
+      ...computeQuizRowStatus(p.code, p.questions)
+    }));
+  }, [userAnswers, quizProgress]);
+
+  const allPacksSummary = useMemo(
+    () => [...allTopic1_2PacksSummary, ...allTopic1PacksSummary],
+    [allTopic1_2PacksSummary, allTopic1PacksSummary]
+  );
+
+  const activeTopicPacksSummary = selectedTopicId === '1.2' ? allTopic1_2PacksSummary : allTopic1PacksSummary;
+
+  const dashTopicScopedPacks = useMemo(() => {
+    if (dashTopicFilter === '1.1') return allTopic1PacksSummary;
+    if (dashTopicFilter === '1.2') return allTopic1_2PacksSummary;
+    return allPacksSummary;
+  }, [dashTopicFilter, allTopic1PacksSummary, allTopic1_2PacksSummary, allPacksSummary]);
+
+  const completedPacksCount = dashTopicScopedPacks.filter((p) => p.statusType === 'completed').length;
+  const inProgressPacks = dashTopicScopedPacks.filter((p) => p.statusType === 'in_progress');
+  const notStartedPacksCount = dashTopicScopedPacks.filter((p) => p.statusType === 'not_started').length;
 
   const filteredDashboardPacks = useMemo(() => {
-    if (dashPackFilter === 'ALL') return allTopic1PacksSummary;
-    return allTopic1PacksSummary.filter((p) => p.statusType === dashPackFilter);
-  }, [allTopic1PacksSummary, dashPackFilter]);
+    if (dashPackFilter === 'ALL') return dashTopicScopedPacks;
+    return dashTopicScopedPacks.filter((p) => p.statusType === dashPackFilter);
+  }, [dashTopicScopedPacks, dashPackFilter]);
+
+  const currentTopicTextbookQuestions = selectedTopicId === '1.2' ? QUIZ_QUESTIONS_1_2 : QUIZ_QUESTIONS;
+  const currentTopicChapters = selectedTopicId === '1.2' ? TOPIC_1_2_CHAPTERS : TOPIC_1_CHAPTERS;
+  const currentTopicAudio = selectedTopicId === '1.2' ? TOPIC_1_2_AUDIO : TOPIC_1_AUDIO;
+  const currentTopicFlashcards = selectedTopicId === '1.2' ? TOPIC_1_2_FLASHCARDS : TOPIC_1_FLASHCARDS;
 
   const categoryAnalytics = useMemo(() => {
     const catMap = {};
-    QUIZ_QUESTIONS.forEach((q) => {
+    currentTopicTextbookQuestions.forEach((q) => {
       if (!catMap[q.category]) {
         catMap[q.category] = { name: q.category, total: 0, answered: 0, correct: 0, wrong: 0, remedyBooks: new Set() };
       }
@@ -844,10 +1014,10 @@ export default function App() {
       const pct = cat.answered > 0 ? Math.round((cat.correct / cat.total) * 100) : 0;
       return { ...cat, percentage: pct, remedyList: Array.from(cat.remedyBooks) };
     });
-  }, [userAnswers]);
+  }, [userAnswers, currentTopicTextbookQuestions]);
 
   const filteredChapters = useMemo(() => {
-    return TOPIC_1_CHAPTERS.filter((ch) => {
+    return currentTopicChapters.filter((ch) => {
       const matchId = activeChapterId === 'ALL' || ch.id === activeChapterId;
       const matchQuery =
         !studySearch.trim() ||
@@ -855,24 +1025,37 @@ export default function App() {
         ch.html.toLowerCase().includes(studySearch.toLowerCase());
       return matchId && matchQuery;
     });
-  }, [activeChapterId, studySearch]);
+  }, [activeChapterId, studySearch, currentTopicChapters]);
 
   const filteredFlashcards = useMemo(() => {
-    return TOPIC_1_FLASHCARDS.filter((fc) => {
+    return currentTopicFlashcards.filter((fc) => {
       if (fcCategory === 'ALL') return true;
       if (fcCategory === 'REVIEW') return fcStatus[fc.id] === 'review';
       if (fcCategory === 'KNOWN') return fcStatus[fc.id] === 'known';
       return fc.category === fcCategory;
     });
-  }, [fcCategory, fcStatus]);
+  }, [fcCategory, fcStatus, currentTopicFlashcards]);
 
   const currentFlashcard = filteredFlashcards[fcIndex] || filteredFlashcards[0] || null;
-  const knownFlashcardsCount = Object.values(fcStatus).filter((v) => v === 'known').length;
-  const reviewFlashcardsCount = Object.values(fcStatus).filter((v) => v === 'review').length;
+  const knownFlashcardsCount1_1 = TOPIC_1_FLASHCARDS.filter((fc) => fcStatus[fc.id] === 'known').length;
+  const reviewFlashcardsCount1_1 = TOPIC_1_FLASHCARDS.filter((fc) => fcStatus[fc.id] === 'review').length;
+  const knownFlashcardsCount1_2 = TOPIC_1_2_FLASHCARDS.filter((fc) => fcStatus[fc.id] === 'known').length;
+  const reviewFlashcardsCount1_2 = TOPIC_1_2_FLASHCARDS.filter((fc) => fcStatus[fc.id] === 'review').length;
 
-  const totalTextbookAnswered = QUIZ_QUESTIONS.filter((q) => userAnswers[q.id]).length;
-  const totalTeacherAnswered = ALL_TEACHER_QUESTIONS.filter((q) => userAnswers[q.id]).length;
-  const totalGuvenAnswered = ALL_GUVEN_QUESTIONS.filter((q) => userAnswers[q.id]).length;
+  const knownFlashcardsCount = selectedTopicId === '1.2' ? knownFlashcardsCount1_2 : knownFlashcardsCount1_1;
+  const reviewFlashcardsCount = selectedTopicId === '1.2' ? reviewFlashcardsCount1_2 : reviewFlashcardsCount1_1;
+
+  const totalTextbookAnswered1_1 = QUIZ_QUESTIONS.filter((q) => userAnswers[q.id]).length;
+  const totalTeacherAnswered1_1 = ALL_TEACHER_QUESTIONS.filter((q) => userAnswers[q.id]).length;
+  const totalGuvenAnswered1_1 = ALL_GUVEN_QUESTIONS.filter((q) => userAnswers[q.id]).length;
+
+  const totalTextbookAnswered1_2 = QUIZ_QUESTIONS_1_2.filter((q) => userAnswers[q.id]).length;
+  const totalTeacherAnswered1_2 = ALL_TEACHER_QUESTIONS_1_2.filter((q) => userAnswers[q.id]).length;
+  const totalGuvenAnswered1_2 = ALL_GUVEN_QUESTIONS_1_2.filter((q) => userAnswers[q.id]).length;
+
+  const totalTextbookAnswered = selectedTopicId === '1.2' ? totalTextbookAnswered1_2 : totalTextbookAnswered1_1;
+  const totalTeacherAnswered = selectedTopicId === '1.2' ? totalTeacherAnswered1_2 : totalTeacherAnswered1_1;
+  const totalGuvenAnswered = selectedTopicId === '1.2' ? totalGuvenAnswered1_2 : totalGuvenAnswered1_1;
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -896,9 +1079,10 @@ export default function App() {
         };
       }
     }
+    const pool = portalView === 'topic_detail' ? activeTopicPacksSummary : allPacksSummary;
     const next =
-      allTopic1PacksSummary.find((p) => p.statusType === 'in_progress') ||
-      allTopic1PacksSummary.find((p) => p.statusType === 'not_started');
+      pool.find((p) => p.statusType === 'in_progress') ||
+      pool.find((p) => p.statusType === 'not_started');
     if (!next) return null;
     return {
       code: next.code,
@@ -1038,8 +1222,8 @@ export default function App() {
 
             <div className="auth-features-list">
               <div className="auth-feature-item">
-                <strong>340 İnteraktiv Test Sualı (Mövzu 1.1)</strong>
-                <span>Güvən 2025 (95 sual), Dərslik Bazası (80 sual) və Müəllim Sınaqları (165 sual)</span>
+                <strong>702 İnteraktiv Test Sualı (Mövzu 1.1 və Mövzu 1.2)</strong>
+                <span>Güvən 2025 (307 sual), Dərslik Bazası (160 sual) və Osman Müəllim Sınaqları (235 sual)</span>
               </div>
               <div className="auth-feature-item">
                 <strong>Yarıda Qalan Testdən Davam Etmə</strong>
@@ -1214,65 +1398,161 @@ export default function App() {
   const syncLabel =
     syncStatus === 'syncing' ? 'Sinxronlaşır…' : syncStatus === 'error' ? 'Bağlantı xətası' : 'Yadda saxlanılıb';
 
+  const switchTopic = (topId) => {
+    setSelectedTopicId(topId);
+    setActiveChapterId('ALL');
+    setStudySearch('');
+    setFcCategory('ALL');
+    setFcIndex(0);
+    setFcFlipped(false);
+  };
+
   const goTo = (view) => {
-    if (view === 'topic_detail') setSelectedTopicId('1.1');
-    setPortalView(view);
+    if (view === 'topic_1_1') {
+      switchTopic('1.1');
+      setPortalView('topic_detail');
+    } else if (view === 'topic_1_2') {
+      switchTopic('1.2');
+      setPortalView('topic_detail');
+    } else {
+      setPortalView(view);
+    }
     window.scrollTo({ top: 0 });
   };
 
+  const isNavItemActive = (itemId) => {
+    if (itemId === 'topic_1_1') return portalView === 'topic_detail' && selectedTopicId === '1.1';
+    if (itemId === 'topic_1_2') return portalView === 'topic_detail' && selectedTopicId === '1.2';
+    return portalView === itemId;
+  };
+
   const PAGE_HEADINGS = {
-    dashboard: { title: `Salam, ${displayFirstName.split(' ')[0]}`, sub: 'Mövzu 1.1 üzrə hazırlığının ümumi görünüşü' },
-    topic_detail: { title: 'Mövzu 1.1', sub: 'Coğrafi kəşflər və tədqiqatlar' },
+    dashboard: {
+      title: `Salam, ${displayFirstName.split(' ')[0]}`,
+      sub: 'Mövzu 1.1 (340 sual) və Mövzu 1.2 (362 sual) üzrə hazırlığının ümumi görünüşü'
+    },
+    topic_detail:
+      selectedTopicId === '1.2'
+        ? {
+            title: 'Mövzu 1.2',
+            sub: 'Məkan, Miqyas, Plan, Azimut, Paletka və Horizontallar (362 sual • 8 fəsil • 70 kart)'
+          }
+        : {
+            title: 'Mövzu 1.1',
+            sub: 'Coğrafi kəşflər və tədqiqatlar, coğrafiya elminin inkişafı (340 sual • 8 fəsil • 65 kart)'
+          },
     topics: { title: 'Rəsmi çərçivə', sub: 'MİQ qiymətləndirmə çərçivəsi üzrə mövzular' },
     mistakes: { title: 'Səhv dəftəri', sub: `${allWrongQuestions.length} sual təkrar gözləyir` }
   };
   const heading = PAGE_HEADINGS[portalView] || PAGE_HEADINGS.dashboard;
 
+  const totalCompletedAllPacks = allPacksSummary.filter((p) => p.statusType === 'completed').length;
+  const completed1_1Packs = allTopic1PacksSummary.filter((p) => p.statusType === 'completed').length;
+  const completed1_2Packs = allTopic1_2PacksSummary.filter((p) => p.statusType === 'completed').length;
+
   const navBadge = (id) => {
-    if (id === 'dashboard') return `${completedPacksCount}/12`;
+    if (id === 'dashboard') return `${totalCompletedAllPacks}/${allPacksSummary.length}`;
+    if (id === 'topic_1_1') return `${completed1_1Packs}/12`;
+    if (id === 'topic_1_2') return `${completed1_2Packs}/13`;
     if (id === 'mistakes' && allWrongQuestions.length > 0) return allWrongQuestions.length;
     return null;
   };
 
+  const guvenTotalForTopic = selectedTopicId === '1.2' ? 212 : 95;
+  const teacherTotalForTopic = selectedTopicId === '1.2' ? 70 : 165;
+  const fcTotalForTopic = selectedTopicId === '1.2' ? TOPIC_1_2_FLASHCARDS.length : TOPIC_1_FLASHCARDS.length;
+
   const HUB_TABS = [
-    { id: 'guven', label: 'Güvən 2025', count: `${totalGuvenAnswered}/95` },
+    { id: 'guven', label: 'Güvən 2025', count: `${totalGuvenAnswered}/${guvenTotalForTopic}` },
     { id: 'textbook', label: 'Dərslik', count: `${totalTextbookAnswered}/80` },
-    { id: 'teacher', label: 'Müəllim', count: `${totalTeacherAnswered}/165` },
-    { id: 'study', label: 'Konspekt' },
-    { id: 'flashcards', label: 'Kartlar', count: `${knownFlashcardsCount}/65` },
+    { id: 'teacher', label: 'Müəllim', count: `${totalTeacherAnswered}/${teacherTotalForTopic}` },
+    { id: 'study', label: 'Konspekt', count: '8 fəsil' },
+    { id: 'flashcards', label: 'Kartlar', count: `${knownFlashcardsCount}/${fcTotalForTopic}` },
     { id: 'analytics', label: 'Diaqnostika' }
   ];
 
-  const BANK_TABS = {
-    guven: {
-      bank: 'Güvən 2025',
-      title: 'Güvən 2025 test bankı',
-      sub: '«Tapşırıqlar Toplusu 2025» — A, B, C qrup və açıq tapşırıqlar',
-      mega: { code: 'GV-MEGA', label: 'Qarışıq sınaq · 25' },
-      all: { code: 'GV-ALL', label: 'Hamısı · 95' }
-    },
-    textbook: {
-      bank: 'Dərslik Bazası',
-      title: 'Dərslik bazası',
-      sub: '6–11-ci sinif dərslikləri və metodik vəsaitlər əsasında',
-      mega: { code: 'MEGA', label: 'Qarışıq sınaq · 20' },
-      all: { code: 'ALL', label: 'Hamısı · 80' }
-    },
-    teacher: {
-      bank: 'Müəllim Sınağı',
-      title: 'Müəllim sınaqları',
-      sub: 'Dərs qrupunda paylaşılan 4 sınaq',
-      mega: { code: 'GF-MEGA', label: 'Qarışıq sınaq · 25' },
-      all: { code: 'GF-ALL', label: 'Hamısı · 165' }
-    }
-  };
+  const BANK_TABS =
+    selectedTopicId === '1.2'
+      ? {
+          guven: {
+            bank: 'Güvən 2025',
+            title: 'Güvən 2025 test bankı (Mövzu 1.2)',
+            sub: 'Bölmə 2 (Miqyas və Plan • 115 sual) + Bölmə 3 (Azimut və Horizontallar • 97 sual)',
+            mega: { code: 'T2-GV-MEGA', label: 'Qarışıq sınaq · 30' },
+            all: { code: 'T2-GV-ALL', label: 'Hamısı · 212' }
+          },
+          textbook: {
+            bank: 'Dərslik Bazası',
+            title: 'Dərslik bazası (Mövzu 1.2)',
+            sub: '6, 7, 8, 9, 10 və 11-ci sinif dərslikləri və metodik vəsaitlər əsasında (Variant A, B, C, D)',
+            mega: { code: 'T2-MEGA', label: 'Qarışıq sınaq · 20' },
+            all: { code: 'T2-ALL', label: 'Hamısı · 80' }
+          },
+          teacher: {
+            bank: 'Müəllim Sınağı',
+            title: 'Osman müəllim sınaqları (Plan bölməsi)',
+            sub: 'Dərs qrupunda paylaşılan 3 Google Forms sınağı (50 + 10 + 10 sual)',
+            mega: { code: 'T2-GF-MEGA', label: 'Qarışıq sınaq · 25' },
+            all: { code: 'T2-GF-ALL', label: 'Hamısı · 70' }
+          }
+        }
+      : {
+          guven: {
+            bank: 'Güvən 2025',
+            title: 'Güvən 2025 test bankı (Mövzu 1.1)',
+            sub: '«Tapşırıqlar Toplusu 2025» — A, B, C qrup və açıq tapşırıqlar',
+            mega: { code: 'GV-MEGA', label: 'Qarışıq sınaq · 25' },
+            all: { code: 'GV-ALL', label: 'Hamısı · 95' }
+          },
+          textbook: {
+            bank: 'Dərslik Bazası',
+            title: 'Dərslik bazası (Mövzu 1.1)',
+            sub: '6–11-ci sinif dərslikləri və metodik vəsaitlər əsasında',
+            mega: { code: 'MEGA', label: 'Qarışıq sınaq · 20' },
+            all: { code: 'ALL', label: 'Hamısı · 80' }
+          },
+          teacher: {
+            bank: 'Müəllim Sınağı',
+            title: 'Osman müəllim sınaqları (Mövzu 1.1)',
+            sub: 'Dərs qrupunda paylaşılan 4 sınaq',
+            mega: { code: 'GF-MEGA', label: 'Qarışıq sınaq · 25' },
+            all: { code: 'GF-ALL', label: 'Hamısı · 165' }
+          }
+        };
 
   const PACK_FILTERS = [
-    { id: 'ALL', label: 'Hamısı', count: allTopic1PacksSummary.length },
+    { id: 'ALL', label: 'Hamısı', count: dashTopicScopedPacks.length },
     { id: 'in_progress', label: 'Davam edən', count: inProgressPacks.length },
     { id: 'completed', label: 'Bitmiş', count: completedPacksCount },
     { id: 'not_started', label: 'Yeni', count: notStartedPacksCount }
   ];
+
+  const FLASHCARD_CATEGORY_TABS =
+    selectedTopicId === '1.2'
+      ? [
+          { id: 'ALL', label: 'Hamısı', count: TOPIC_1_2_FLASHCARDS.length },
+          { id: '1. Məkan və Məkanın Miqyası (6–8-ci siniflər)', label: 'Məkan və Miqyas', count: 25 },
+          { id: '2. Coğrafi Mövqe və 4-lü/6-lı Şəbəkə (7-ci sinif)', label: 'Mövqe və Şəbəkə', count: 20 },
+          {
+            id: '3. Kartoqrafik Miqyas, Plan, Azimut, Paletka və Horizontallar',
+            label: 'Plan, Azimut, Horizontal',
+            count: 25
+          },
+          { id: 'REVIEW', label: 'Təkrar', count: reviewFlashcardsCount },
+          { id: 'KNOWN', label: 'Bilirəm', count: knownFlashcardsCount }
+        ]
+      : [
+          { id: 'ALL', label: 'Hamısı', count: TOPIC_1_FLASHCARDS.length },
+          { id: '1. Coğrafi kəşflər və tədqiqatlar', label: 'Kəşflər', count: 25 },
+          { id: '2. Azərbaycanda coğrafiya elminin inkişafı', label: 'Azərbaycan', count: 20 },
+          {
+            id: '3. Coğrafiya elminin sahələri və müasir coğrafi biliklərin əldə edilməsi',
+            label: 'Sahələr və CİS',
+            count: 20
+          },
+          { id: 'REVIEW', label: 'Təkrar', count: reviewFlashcardsCount },
+          { id: 'KNOWN', label: 'Bilirəm', count: knownFlashcardsCount }
+        ];
 
   return (
     <div className={`m-app ${selectedVariant !== null ? 'is-quiz' : ''}`}>
@@ -1291,7 +1571,7 @@ export default function App() {
             {NAV_ITEMS.map((item) => (
               <button
                 key={item.id}
-                className={`m-nav-item ${portalView === item.id ? 'active' : ''}`}
+                className={`m-nav-item ${isNavItemActive(item.id) ? 'active' : ''}`}
                 onClick={() => goTo(item.id)}
               >
                 <Icon name={item.icon} />
@@ -1656,7 +1936,7 @@ export default function App() {
                   <span className="m-stat-label">Bitmiş testlər</span>
                   <strong className="m-stat-value">
                     {completedPacksCount}
-                    <small> / {allTopic1PacksSummary.length}</small>
+                    <small> / {dashTopicScopedPacks.length}</small>
                   </strong>
                   <span className="m-stat-sub">{inProgressPacks.length} test yarımçıqdır</span>
                 </div>
@@ -1667,21 +1947,43 @@ export default function App() {
                   <div>
                     <h2 className="m-section-title">Test paketləri</h2>
                     <p className="m-section-sub">
-                      {allTopic1PacksSummary.length} paket · {globalMiqSummary.total} sual
+                      {dashTopicScopedPacks.length} paket ·{' '}
+                      {dashTopicFilter === '1.1'
+                        ? `${ALL_TOPIC_1_1_QUESTIONS.length} sual (Mövzu 1.1)`
+                        : dashTopicFilter === '1.2'
+                        ? `${ALL_TOPIC_1_2_QUESTIONS.length} sual (Mövzu 1.2)`
+                        : `${globalMiqSummary.total} sual (Mövzu 1.1 + 1.2)`}
                     </p>
                   </div>
                   <div className="m-filter">
-                    {PACK_FILTERS.map((f) => (
+                    {[
+                      { id: 'ALL', label: 'Bütün mövzular', count: allPacksSummary.length },
+                      { id: '1.2', label: 'Mövzu 1.2 (Miqyas və Plan)', count: allTopic1_2PacksSummary.length },
+                      { id: '1.1', label: 'Mövzu 1.1 (Kəşflər)', count: allTopic1PacksSummary.length }
+                    ].map((tf) => (
                       <button
-                        key={f.id}
-                        className={dashPackFilter === f.id ? 'active' : ''}
-                        onClick={() => setDashPackFilter(f.id)}
+                        key={tf.id}
+                        className={dashTopicFilter === tf.id ? 'active' : ''}
+                        onClick={() => setDashTopicFilter(tf.id)}
                       >
-                        {f.label}
-                        <em>{f.count}</em>
+                        {tf.label}
+                        <em>{tf.count}</em>
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="m-filter" style={{ marginBottom: '14px' }}>
+                  {PACK_FILTERS.map((f) => (
+                    <button
+                      key={f.id}
+                      className={dashPackFilter === f.id ? 'active' : ''}
+                      onClick={() => setDashPackFilter(f.id)}
+                    >
+                      {f.label}
+                      <em>{f.count}</em>
+                    </button>
+                  ))}
                 </div>
 
                 {filteredDashboardPacks.length === 0 ? (
@@ -1740,10 +2042,19 @@ export default function App() {
 
                     {top.id === '1.1' && (
                       <div className="m-topic-stats">
-                        <span>Güvən <b>{totalGuvenAnswered}/95</b></span>
-                        <span>Dərslik <b>{totalTextbookAnswered}/80</b></span>
-                        <span>Müəllim <b>{totalTeacherAnswered}/165</b></span>
-                        <span>Kartlar <b>{knownFlashcardsCount}/65</b></span>
+                        <span>Güvən <b>{totalGuvenAnswered1_1}/95</b></span>
+                        <span>Dərslik <b>{totalTextbookAnswered1_1}/80</b></span>
+                        <span>Müəllim <b>{totalTeacherAnswered1_1}/165</b></span>
+                        <span>Kartlar <b>{knownFlashcardsCount1_1}/65</b></span>
+                      </div>
+                    )}
+
+                    {top.id === '1.2' && (
+                      <div className="m-topic-stats">
+                        <span>Güvən <b>{totalGuvenAnswered1_2}/212</b></span>
+                        <span>Dərslik <b>{totalTextbookAnswered1_2}/80</b></span>
+                        <span>Müəllim <b>{totalTeacherAnswered1_2}/70</b></span>
+                        <span>Kartlar <b>{knownFlashcardsCount1_2}/70</b></span>
                       </div>
                     )}
 
@@ -1751,9 +2062,10 @@ export default function App() {
                       <button
                         className="m-btn m-btn-primary"
                         onClick={() => {
-                          setSelectedTopicId(top.id);
+                          switchTopic(top.id);
                           setSelectedVariant(null);
-                          goTo('topic_detail');
+                          setPortalView('topic_detail');
+                          window.scrollTo({ top: 0 });
                         }}
                       >
                         Mövzuya keç
@@ -1828,8 +2140,25 @@ export default function App() {
               </section>
             </div>
           ) : (
-            /* ======================== TOPIC 1.1 HUB ======================== */
+            /* ======================== TOPIC HUB (1.1 & 1.2) ======================== */
             <div className="m-stack">
+              <div className="m-filter m-filter-scroll">
+                <button
+                  className={selectedTopicId === '1.2' ? 'active' : ''}
+                  onClick={() => switchTopic('1.2')}
+                >
+                  Mövzu 1.2 · Məkan, Miqyas və Plan
+                  <em>362 sual</em>
+                </button>
+                <button
+                  className={selectedTopicId === '1.1' ? 'active' : ''}
+                  onClick={() => switchTopic('1.1')}
+                >
+                  Mövzu 1.1 · Kəşflər və Tədqiqatlar
+                  <em>340 sual</em>
+                </button>
+              </div>
+
               {renderContinueCard(true)}
 
               <div className="m-tabs" role="tablist">
@@ -1870,7 +2199,7 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-                  {renderPackGrid(allTopic1PacksSummary.filter((p) => p.bankName === BANK_TABS[hubTab].bank))}
+                  {renderPackGrid(activeTopicPacksSummary.filter((p) => p.bankName === BANK_TABS[hubTab].bank))}
                 </section>
               )}
 
@@ -1879,26 +2208,32 @@ export default function App() {
                   <section className="m-section">
                     <div className="m-section-head">
                       <div>
-                        <h2 className="m-section-title">Səsli dərslər</h2>
-                        <p className="m-section-sub">Mövzu 1.1 üzrə dərslik və metodik vəsait materialları</p>
+                        <h2 className="m-section-title">Səsli dərslər və Konspekt</h2>
+                        <p className="m-section-sub">
+                          Mövzu {selectedTopicId} üzrə 6–11-ci sinif dərslikləri, metodik vəsaitlər və müəllim materialları
+                        </p>
                       </div>
                       <a
-                        href="/Movzu_1_1_Konspekt.pdf"
-                        download="Movzu_1_1_Cografi_Kesfler_Konspekt.pdf"
+                        href={selectedTopicId === '1.2' ? '/Movzu_1_2_Konspekt.pdf' : '/Movzu_1_1_Konspekt.pdf'}
+                        download={
+                          selectedTopicId === '1.2'
+                            ? 'Movzu_1_2_Mekan_Miqyas_Plan_Konspekt.pdf'
+                            : 'Movzu_1_1_Cografi_Kesfler_Konspekt.pdf'
+                        }
                         className="m-btn m-btn-primary"
                       >
-                        PDF konspekt (16 səh.)
+                        PDF konspekt endir
                       </a>
                     </div>
 
                     <div className="audio-cards-grid">
-                      {TOPIC_1_AUDIO.map((aud) => (
+                      {currentTopicAudio.map((aud) => (
                         <div key={aud.id} className="audio-player-card">
                           <div className="audio-card-info">
                             <strong>{aud.title}</strong>
                             <span>{aud.desc}</span>
                           </div>
-                          <audio controls preload="none" className="audio-element">
+                          <audio key={aud.src} controls preload="none" className="audio-element">
                             <source src={aud.src} type="audio/mpeg" />
                           </audio>
                         </div>
@@ -1910,7 +2245,11 @@ export default function App() {
                     <input
                       type="search"
                       className="m-input"
-                      placeholder="Konspektdə axtar: Biruni, Merkator, CİS…"
+                      placeholder={
+                        selectedTopicId === '1.2'
+                          ? 'Konspektdə axtar: paletka, azimut, 4-lü şəbəkə, kəsmə yüksəklik…'
+                          : 'Konspektdə axtar: Biruni, Merkator, CİS…'
+                      }
                       value={studySearch}
                       onChange={(e) => setStudySearch(e.target.value)}
                     />
@@ -1921,7 +2260,7 @@ export default function App() {
                       >
                         Hamısı
                       </button>
-                      {TOPIC_1_CHAPTERS.map((ch) => (
+                      {currentTopicChapters.map((ch) => (
                         <button
                           key={ch.id}
                           className={activeChapterId === ch.id ? 'active' : ''}
@@ -1952,17 +2291,22 @@ export default function App() {
                 <section className="m-section">
                   <div className="m-section-head">
                     <div>
-                      <h2 className="m-section-title">Yaddaş kartları</h2>
+                      <h2 className="m-section-title">Yaddaş kartları (Mövzu {selectedTopicId})</h2>
                       <p className="m-section-sub">
                         <span className="m-good">{knownFlashcardsCount} bilirəm</span> ·{' '}
-                        <span className="m-warn">{reviewFlashcardsCount} təkrar</span> · {TOPIC_1_FLASHCARDS.length} kart
+                        <span className="m-warn">{reviewFlashcardsCount} təkrar</span> · {currentTopicFlashcards.length} kart
                       </p>
                     </div>
                     <button
                       className="m-btn m-btn-ghost"
                       onClick={() => {
-                        if (window.confirm('Yaddaş kartları üzrə işarələmələri sıfırlamaq istəyirsiniz?')) {
-                          setFcStatus({});
+                        if (window.confirm('Cari mövzunun yaddaş kartları üzrə işarələmələri sıfırlamaq istəyirsiniz?')) {
+                          const ids = new Set(currentTopicFlashcards.map((c) => c.id));
+                          setFcStatus((prev) => {
+                            const next = { ...prev };
+                            ids.forEach((id) => delete next[id]);
+                            return next;
+                          });
                           setFcIndex(0);
                         }
                       }}
@@ -1973,18 +2317,7 @@ export default function App() {
                   </div>
 
                   <div className="m-filter m-filter-scroll">
-                    {[
-                      { id: 'ALL', label: 'Hamısı', count: TOPIC_1_FLASHCARDS.length },
-                      { id: '1. Coğrafi kəşflər və tədqiqatlar', label: 'Kəşflər', count: 25 },
-                      { id: '2. Azərbaycanda coğrafiya elminin inkişafı', label: 'Azərbaycan', count: 20 },
-                      {
-                        id: '3. Coğrafiya elminin sahələri və müasir coğrafi biliklərin əldə edilməsi',
-                        label: 'Sahələr və CİS',
-                        count: 20
-                      },
-                      { id: 'REVIEW', label: 'Təkrar', count: reviewFlashcardsCount },
-                      { id: 'KNOWN', label: 'Bilirəm', count: knownFlashcardsCount }
-                    ].map((tab) => (
+                    {FLASHCARD_CATEGORY_TABS.map((tab) => (
                       <button
                         key={tab.id}
                         className={fcCategory === tab.id ? 'active' : ''}
@@ -2117,7 +2450,7 @@ export default function App() {
           {NAV_ITEMS.map((item) => (
             <button
               key={item.id}
-              className={portalView === item.id ? 'active' : ''}
+              className={isNavItemActive(item.id) ? 'active' : ''}
               onClick={() => goTo(item.id)}
             >
               <Icon name={item.icon} size={20} />
