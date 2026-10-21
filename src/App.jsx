@@ -1,10 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { QUIZ_QUESTIONS } from './data/quizQuestions';
 import { FRAMEWORK_SECTIONS, TOPICS_CATALOG } from './data/topicsData';
 import { teacherQuizzesTopic1 } from './data/teacherQuizzes';
 import { GUVEN_QUIZZES } from './data/guvenQuizzes';
 import { TOPIC_1_AUDIO, TOPIC_1_CHAPTERS } from './data/topic1StudyData';
 import { TOPIC_1_FLASHCARDS } from './data/topic1Flashcards';
+import {
+  fetchOrCreateCloudProfile,
+  syncProfileToCloud,
+  subscribeToCloudProfile
+} from './firebase';
 
 const ALL_TEACHER_QUESTIONS = teacherQuizzesTopic1.flatMap((qGroup) => qGroup.questions);
 const ALL_GUVEN_QUESTIONS = GUVEN_QUIZZES.flatMap((qGroup) => qGroup.questions);
@@ -48,12 +53,28 @@ const VARIANTS_META = [
 
 export default function App() {
   const [selectedTopicId, setSelectedTopicId] = useState(null);
-  // Tabs: 'study' | 'flashcards' | 'textbook' | 'guven' | 'teacher' | 'analytics'
+  // Tabs: 'study' | 'flashcards' | 'guven' | 'textbook' | 'teacher' | 'analytics'
   const [hubTab, setHubTab] = useState('guven');
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [mode, setMode] = useState('study'); // 'study' | 'exam'
   const [questions, setQuestions] = useState(QUIZ_QUESTIONS);
   const [currentIndex, setCurrentIndex] = useState(0);
+
+  // User Profile & Cloud Sync state
+  const [profileCreds, setProfileCreds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('miq_profile_creds');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [loginName, setLoginName] = useState('');
+  const [loginPin, setLoginPin] = useState('');
+  const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
+  const [syncMessage, setSyncMessage] = useState('');
+  const isApplyingRemoteRef = useRef(false);
 
   // Saved quiz answers
   const [userAnswers, setUserAnswers] = useState(() => {
@@ -62,6 +83,36 @@ export default function App() {
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
+    }
+  });
+
+  // Per-quiz progress (last question index, updated timestamp)
+  const [quizProgress, setQuizProgress] = useState(() => {
+    try {
+      const saved = localStorage.getItem('miq_quiz_progress_1_1');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Last active quiz session for instant resume
+  const [lastActiveQuiz, setLastActiveQuiz] = useState(() => {
+    try {
+      const saved = localStorage.getItem('miq_last_active_quiz_1_1');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Completed exam attempts history
+  const [examHistory, setExamHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem('miq_exam_history_1_1');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
     }
   });
 
@@ -90,6 +141,7 @@ export default function App() {
   const isTeacherVariant = selectedVariant && selectedVariant.startsWith('GF-');
   const isGuvenVariant = selectedVariant && selectedVariant.startsWith('GV-');
 
+  // Local storage persistence
   useEffect(() => {
     try {
       localStorage.setItem('miq_user_answers_1_1', JSON.stringify(userAnswers));
@@ -100,11 +152,204 @@ export default function App() {
 
   useEffect(() => {
     try {
+      localStorage.setItem('miq_quiz_progress_1_1', JSON.stringify(quizProgress));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [quizProgress]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('miq_last_active_quiz_1_1', JSON.stringify(lastActiveQuiz));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [lastActiveQuiz]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('miq_exam_history_1_1', JSON.stringify(examHistory));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [examHistory]);
+
+  useEffect(() => {
+    try {
       localStorage.setItem('miq_flashcards_1_1', JSON.stringify(fcStatus));
     } catch (e) {
       console.error(e);
     }
   }, [fcStatus]);
+
+  // Subscribe to real-time Cloud Profile updates if logged in
+  useEffect(() => {
+    if (!profileCreds?.profileKey) return;
+    setSyncStatus('syncing');
+    const unsub = subscribeToCloudProfile(profileCreds.profileKey, (remoteData) => {
+      isApplyingRemoteRef.current = true;
+      if (remoteData.userAnswers) {
+        setUserAnswers((prev) => ({ ...prev, ...remoteData.userAnswers }));
+      }
+      if (remoteData.quizProgress) {
+        setQuizProgress((prev) => ({ ...prev, ...remoteData.quizProgress }));
+      }
+      if (remoteData.fcStatus) {
+        setFcStatus((prev) => ({ ...prev, ...remoteData.fcStatus }));
+      }
+      if (Array.isArray(remoteData.examHistory) && remoteData.examHistory.length > 0) {
+        setExamHistory(remoteData.examHistory);
+      }
+      if (remoteData.lastActiveQuiz) {
+        setLastActiveQuiz(remoteData.lastActiveQuiz);
+      }
+      setSyncStatus('synced');
+      setTimeout(() => {
+        isApplyingRemoteRef.current = false;
+      }, 150);
+    });
+    return () => unsub();
+  }, [profileCreds?.profileKey]);
+
+  // Debounced auto-save to Cloud Profile whenever user state changes
+  useEffect(() => {
+    if (!profileCreds?.profileKey || isApplyingRemoteRef.current) return;
+    const timer = setTimeout(() => {
+      setSyncStatus('syncing');
+      syncProfileToCloud(profileCreds.profileKey, {
+        displayName: profileCreds.displayName,
+        pin: profileCreds.pin,
+        userAnswers,
+        quizProgress,
+        fcStatus,
+        examHistory,
+        lastActiveQuiz
+      })
+        .then(() => setSyncStatus('synced'))
+        .catch(() => setSyncStatus('error'));
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [userAnswers, quizProgress, fcStatus, examHistory, lastActiveQuiz, profileCreds]);
+
+  // Handle login / profile creation
+  const handleProfileLogin = async (e) => {
+    e.preventDefault();
+    const trimmedName = loginName.trim();
+    const trimmedPin = loginPin.trim();
+    if (trimmedName.length < 2) {
+      setSyncMessage('Zəhmət olmasa adınızı daxil edin (ən azı 2 hərf).');
+      return;
+    }
+    if (trimmedPin.length < 4 || trimmedPin.length > 12) {
+      setSyncMessage('PIN-kod 4–12 simvol arasında olmalıdır (məsələn: 1234).');
+      return;
+    }
+    setSyncStatus('syncing');
+    setSyncMessage('Bulud bazası ilə əlaqə qurulur...');
+    try {
+      const result = await fetchOrCreateCloudProfile(trimmedName, trimmedPin, {
+        userAnswers,
+        quizProgress,
+        fcStatus,
+        examHistory,
+        lastActiveQuiz
+      });
+
+      const mergedAnswers = { ...(result.data.userAnswers || {}), ...userAnswers };
+      const mergedProgress = { ...(result.data.quizProgress || {}), ...quizProgress };
+      const mergedFc = { ...(result.data.fcStatus || {}), ...fcStatus };
+      const mergedHistory =
+        examHistory.length >= (result.data.examHistory || []).length
+          ? examHistory
+          : result.data.examHistory || [];
+      const mergedLastActive = lastActiveQuiz || result.data.lastActiveQuiz || null;
+
+      setUserAnswers(mergedAnswers);
+      setQuizProgress(mergedProgress);
+      setFcStatus(mergedFc);
+      setExamHistory(mergedHistory);
+      setLastActiveQuiz(mergedLastActive);
+
+      const creds = {
+        profileKey: result.profileKey,
+        displayName: result.data.displayName || trimmedName,
+        pin: trimmedPin
+      };
+      setProfileCreds(creds);
+      localStorage.setItem('miq_profile_creds', JSON.stringify(creds));
+
+      await syncProfileToCloud(result.profileKey, {
+        displayName: creds.displayName,
+        pin: creds.pin,
+        userAnswers: mergedAnswers,
+        quizProgress: mergedProgress,
+        fcStatus: mergedFc,
+        examHistory: mergedHistory,
+        lastActiveQuiz: mergedLastActive
+      });
+
+      setSyncStatus('synced');
+      setSyncMessage(
+        result.isNew
+          ? 'Yeni bulud profili yaradıldı və bütün nəticələriniz yadda saxlanıldı.'
+          : 'Profiliniz bərpa edildi və cihazlararası sinxronlaşdırıldı.'
+      );
+    } catch (err) {
+      console.error(err);
+      setSyncStatus('error');
+      setSyncMessage('Bulud sinxronizasiyası zamanı xəta baş verdi. İnternet bağlantısını yoxlayın.');
+    }
+  };
+
+  const handleProfileLogout = () => {
+    setProfileCreds(null);
+    localStorage.removeItem('miq_profile_creds');
+    setSyncStatus('idle');
+    setSyncMessage('');
+  };
+
+  const getQuizTitleByCode = (varCode) => {
+    if (!varCode) return '';
+    if (varCode === 'ALL') return 'Dərslik Bazası (80 Sual)';
+    if (varCode === 'MEGA') return 'Dərslik Qarışıq Sınaq (20 Sual)';
+    if (varCode === 'GF-ALL') return 'Müəllim Bazası (165 Sual)';
+    if (varCode === 'GF-MEGA') return 'Müəllim Qarışıq Sınaq (25 Sual)';
+    if (varCode === 'GV-ALL') return 'Güvən 2025 Tam Baza (95 Sual)';
+    if (varCode === 'GV-MEGA') return 'Güvən 2025 Qarışıq Sınaq (25 Sual)';
+    if (varCode === 'WRONG-ALL') return 'Səhv Dəftəri Təkrarı';
+    if (varCode.startsWith('GF-')) {
+      const found = teacherQuizzesTopic1.find((tq) => tq.shortCode === varCode);
+      return found ? found.title : varCode;
+    }
+    if (varCode.startsWith('GV-')) {
+      const found = GUVEN_QUIZZES.find((gq) => gq.shortCode === varCode);
+      return found ? found.title : varCode;
+    }
+    return `Dərslik — Variant ${varCode}`;
+  };
+
+  // Track currentIndex changes inside active quiz so user can resume from exact question
+  useEffect(() => {
+    if (!selectedTopicId || !selectedVariant) return;
+    const title = getQuizTitleByCode(selectedVariant);
+    const nowIso = new Date().toISOString();
+    setQuizProgress((prev) => ({
+      ...prev,
+      [selectedVariant]: {
+        ...(prev[selectedVariant] || {}),
+        lastIndex: currentIndex,
+        total: questions.length,
+        updatedAt: nowIso
+      }
+    }));
+    setLastActiveQuiz({
+      variant: selectedVariant,
+      mode,
+      index: currentIndex,
+      title,
+      updatedAt: nowIso
+    });
+  }, [selectedTopicId, selectedVariant, currentIndex, mode, questions.length]);
 
   useEffect(() => {
     let timer = null;
@@ -144,56 +389,85 @@ export default function App() {
     return QUIZ_QUESTIONS.filter((q) => q.variant === varCode);
   };
 
-  const handleSelectVariant = (varCode, requestedMode = 'study') => {
+  // Find first unanswered question index or saved lastIndex for smart resume
+  const getSmartResumeIndex = (varCode, list) => {
+    const savedIdx = quizProgress[varCode]?.lastIndex;
+    if (typeof savedIdx === 'number' && savedIdx >= 0 && savedIdx < list.length) {
+      return savedIdx;
+    }
+    const firstUnanswered = list.findIndex((q) => !userAnswers[q.id]);
+    return firstUnanswered >= 0 ? firstUnanswered : 0;
+  };
+
+  const handleSelectVariant = (varCode, requestedMode = 'study', explicitStartIndex = null) => {
+    setSelectedTopicId('1.1');
     setSelectedVariant(varCode);
     setMode(requestedMode);
-    setCurrentIndex(0);
     setExamSubmitted(false);
     setShowExplanation({});
     setShowQuestionDrawer(false);
 
+    let targetList = QUIZ_QUESTIONS;
     if (varCode === 'ALL') {
-      setQuestions(QUIZ_QUESTIONS);
+      targetList = QUIZ_QUESTIONS;
       setTimeLeft(100 * 60);
     } else if (varCode === 'MEGA') {
       const qA = shuffleArray(QUIZ_QUESTIONS.filter((q) => q.variant === 'A')).slice(0, 5);
       const qB = shuffleArray(QUIZ_QUESTIONS.filter((q) => q.variant === 'B')).slice(0, 5);
       const qC = shuffleArray(QUIZ_QUESTIONS.filter((q) => q.variant === 'C')).slice(0, 5);
       const qD = shuffleArray(QUIZ_QUESTIONS.filter((q) => q.variant === 'D')).slice(0, 5);
-      setQuestions(shuffleArray([...qA, ...qB, ...qC, ...qD]));
+      targetList = shuffleArray([...qA, ...qB, ...qC, ...qD]);
       setTimeLeft(25 * 60);
     } else if (varCode === 'GF-ALL') {
-      setQuestions(ALL_TEACHER_QUESTIONS);
+      targetList = ALL_TEACHER_QUESTIONS;
       setTimeLeft(180 * 60);
     } else if (varCode === 'GF-MEGA') {
-      setQuestions(shuffleArray(ALL_TEACHER_QUESTIONS).slice(0, 25));
+      targetList = shuffleArray(ALL_TEACHER_QUESTIONS).slice(0, 25);
       setTimeLeft(30 * 60);
     } else if (varCode.startsWith('GF-')) {
       const found = teacherQuizzesTopic1.find((tq) => tq.shortCode === varCode);
-      const list = found ? found.questions : ALL_TEACHER_QUESTIONS;
-      setQuestions(list);
-      setTimeLeft(Math.max(30, list.length) * 60);
+      targetList = found ? found.questions : ALL_TEACHER_QUESTIONS;
+      setTimeLeft(Math.max(30, targetList.length) * 60);
     } else if (varCode === 'GV-ALL') {
-      setQuestions(ALL_GUVEN_QUESTIONS);
+      targetList = ALL_GUVEN_QUESTIONS;
       setTimeLeft(110 * 60);
     } else if (varCode === 'GV-MEGA') {
-      setQuestions(shuffleArray(ALL_GUVEN_QUESTIONS).slice(0, 25));
+      targetList = shuffleArray(ALL_GUVEN_QUESTIONS).slice(0, 25);
       setTimeLeft(30 * 60);
     } else if (varCode.startsWith('GV-')) {
       const found = GUVEN_QUIZZES.find((gq) => gq.shortCode === varCode);
-      const list = found ? found.questions : ALL_GUVEN_QUESTIONS;
-      setQuestions(list);
-      setTimeLeft(Math.max(25, list.length) * 60);
+      targetList = found ? found.questions : ALL_GUVEN_QUESTIONS;
+      setTimeLeft(Math.max(25, targetList.length) * 60);
     } else if (varCode === 'WRONG-ALL') {
       const wrongList = ALL_COMBINED_QUESTIONS.filter(
         (q) => userAnswers[q.id] && userAnswers[q.id] !== q.correct
       );
-      setQuestions(wrongList.length > 0 ? wrongList : QUIZ_QUESTIONS);
-      setTimeLeft(Math.max(20, wrongList.length) * 60);
+      targetList = wrongList.length > 0 ? wrongList : QUIZ_QUESTIONS;
+      setTimeLeft(Math.max(20, targetList.length) * 60);
     } else {
-      const varQs = QUIZ_QUESTIONS.filter((q) => q.variant === varCode);
-      setQuestions(varQs);
+      targetList = QUIZ_QUESTIONS.filter((q) => q.variant === varCode);
       setTimeLeft(25 * 60);
+    }
+
+    setQuestions(targetList);
+    const startIdx =
+      explicitStartIndex !== null ? explicitStartIndex : getSmartResumeIndex(varCode, targetList);
+    setCurrentIndex(Math.min(Math.max(0, startIdx), Math.max(0, targetList.length - 1)));
+  };
+
+  const handleResetSpecificVariant = (varCode, list) => {
+    if (window.confirm(`${getQuizTitleByCode(varCode)} üzrə cavablarınızı sıfırlamaq istəyirsiniz?`)) {
+      const ids = new Set(list.map((q) => q.id));
+      setUserAnswers((prev) => {
+        const next = { ...prev };
+        ids.forEach((id) => delete next[id]);
+        return next;
+      });
+      setQuizProgress((prev) => {
+        const next = { ...prev };
+        delete next[varCode];
+        return next;
+      });
     }
   };
 
@@ -221,10 +495,45 @@ export default function App() {
         currentIds.forEach((id) => delete next[id]);
         return next;
       });
+      if (selectedVariant) {
+        setQuizProgress((prev) => {
+          const next = { ...prev };
+          delete next[selectedVariant];
+          return next;
+        });
+      }
       setShowExplanation({});
       setExamSubmitted(false);
       setCurrentIndex(0);
     }
+  };
+
+  const handleFinishExam = () => {
+    setExamSubmitted(true);
+    // Record in examHistory
+    let correct = 0;
+    let wrong = 0;
+    questions.forEach((q) => {
+      const ans = userAnswers[q.id];
+      if (ans) {
+        if (ans === q.correct) correct++;
+        else wrong++;
+      }
+    });
+    const total = questions.length;
+    const netCorrect = Math.max(0, correct - wrong / 4);
+    const miqScore80 = total > 0 ? ((netCorrect / total) * 80).toFixed(1) : '0.0';
+    const entry = {
+      id: Date.now().toString(),
+      variant: selectedVariant || 'QUIZ',
+      title: getQuizTitleByCode(selectedVariant),
+      total,
+      correct,
+      wrong,
+      miqScore80,
+      date: new Date().toLocaleString('az-AZ')
+    };
+    setExamHistory((prev) => [entry, ...prev].slice(0, 50));
   };
 
   const handleRetestWrong = () => {
@@ -261,36 +570,52 @@ export default function App() {
     };
   }, [questions, userAnswers]);
 
-  const variantStats = useMemo(() => {
-    const res = {};
-    ['A', 'B', 'C', 'D'].forEach((v) => {
-      const vQs = QUIZ_QUESTIONS.filter((q) => q.variant === v);
-      const ansCount = vQs.filter((q) => userAnswers[q.id]).length;
-      const corCount = vQs.filter((q) => userAnswers[q.id] === q.correct).length;
-      res[v] = { answered: ansCount, correct: corCount };
+  // Helper to compute detailed progress status for any quiz row
+  const computeQuizRowStatus = (varCode, qList) => {
+    const total = qList.length;
+    let answered = 0;
+    let correct = 0;
+    let wrong = 0;
+    qList.forEach((q) => {
+      const ans = userAnswers[q.id];
+      if (ans) {
+        answered++;
+        if (ans === q.correct) correct++;
+        else wrong++;
+      }
     });
-    return res;
-  }, [userAnswers]);
+    const pct = total > 0 ? Math.round((answered / total) * 100) : 0;
+    const savedLastIdx = quizProgress[varCode]?.lastIndex;
+    const firstUnanswered = qList.findIndex((q) => !userAnswers[q.id]);
+    const resumeIdx =
+      typeof savedLastIdx === 'number' && savedLastIdx >= 0 && savedLastIdx < total
+        ? savedLastIdx
+        : firstUnanswered >= 0
+        ? firstUnanswered
+        : 0;
 
-  const teacherStats = useMemo(() => {
-    const res = {};
-    teacherQuizzesTopic1.forEach((tq) => {
-      const ansCount = tq.questions.filter((q) => userAnswers[q.id]).length;
-      const corCount = tq.questions.filter((q) => userAnswers[q.id] === q.correct).length;
-      res[tq.shortCode] = { answered: ansCount, correct: corCount, total: tq.questionCount };
-    });
-    return res;
-  }, [userAnswers]);
+    let statusType = 'not_started'; // 'completed' | 'in_progress' | 'not_started'
+    let statusLabel = 'Başlanmayıb';
+    if (answered >= total && total > 0) {
+      statusType = 'completed';
+      statusLabel = `Tamamlanıb (100%)`;
+    } else if (answered > 0 || (typeof savedLastIdx === 'number' && savedLastIdx > 0)) {
+      statusType = 'in_progress';
+      statusLabel = `Yarıda qalıb • Sual ${resumeIdx + 1}/${total} (${pct}%)`;
+    }
 
-  const guvenStats = useMemo(() => {
-    const res = {};
-    GUVEN_QUIZZES.forEach((gq) => {
-      const ansCount = gq.questions.filter((q) => userAnswers[q.id]).length;
-      const corCount = gq.questions.filter((q) => userAnswers[q.id] === q.correct).length;
-      res[gq.shortCode] = { answered: ansCount, correct: corCount, total: gq.questionCount };
-    });
-    return res;
-  }, [userAnswers]);
+    return {
+      total,
+      answered,
+      correct,
+      wrong,
+      unanswered: total - answered,
+      pct,
+      resumeIdx,
+      statusType,
+      statusLabel
+    };
+  };
 
   const allWrongQuestions = useMemo(() => {
     return ALL_COMBINED_QUESTIONS.filter((q) => userAnswers[q.id] && userAnswers[q.id] !== q.correct);
@@ -320,6 +645,34 @@ export default function App() {
     };
   }, [userAnswers]);
 
+  // All 12 individual test packs in Topic 1.1 to summarize completed vs in-progress
+  const allTopic1PacksSummary = useMemo(() => {
+    const packs = [
+      ...GUVEN_QUIZZES.map((gq) => ({
+        code: gq.shortCode,
+        title: gq.title,
+        questions: gq.questions
+      })),
+      ...VARIANTS_META.map((vm) => ({
+        code: vm.code,
+        title: `${vm.name}: ${vm.subtitle}`,
+        questions: QUIZ_QUESTIONS.filter((q) => q.variant === vm.code)
+      })),
+      ...teacherQuizzesTopic1.map((tq) => ({
+        code: tq.shortCode,
+        title: tq.title,
+        questions: tq.questions
+      }))
+    ];
+    return packs.map((p) => ({
+      ...p,
+      ...computeQuizRowStatus(p.code, p.questions)
+    }));
+  }, [userAnswers, quizProgress]);
+
+  const completedPacksCount = allTopic1PacksSummary.filter((p) => p.statusType === 'completed').length;
+  const inProgressPacksCount = allTopic1PacksSummary.filter((p) => p.statusType === 'in_progress').length;
+
   const categoryAnalytics = useMemo(() => {
     const catMap = {};
     QUIZ_QUESTIONS.forEach((q) => {
@@ -343,7 +696,6 @@ export default function App() {
     });
   }, [userAnswers]);
 
-  // Filtered chapters for Study view
   const filteredChapters = useMemo(() => {
     return TOPIC_1_CHAPTERS.filter((ch) => {
       const matchId = activeChapterId === 'ALL' || ch.id === activeChapterId;
@@ -355,7 +707,6 @@ export default function App() {
     });
   }, [activeChapterId, studySearch]);
 
-  // Filtered flashcards
   const filteredFlashcards = useMemo(() => {
     return TOPIC_1_FLASHCARDS.filter((fc) => {
       if (fcCategory === 'ALL') return true;
@@ -379,23 +730,95 @@ export default function App() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const getActiveQuizTitle = () => {
-    if (selectedVariant === 'ALL') return 'Dərslik Bazası (80 Sual)';
-    if (selectedVariant === 'MEGA') return 'Dərslik Qarışıq Sınaq (20 Sual)';
-    if (selectedVariant === 'GF-ALL') return 'Müəllim Bazası (165 Sual)';
-    if (selectedVariant === 'GF-MEGA') return 'Müəllim Qarışıq Sınaq (25 Sual)';
-    if (selectedVariant === 'GV-ALL') return 'Güvən 2025 Tam Baza (95 Sual)';
-    if (selectedVariant === 'GV-MEGA') return 'Güvən 2025 Qarışıq Sınaq (25 Sual)';
-    if (selectedVariant === 'WRONG-ALL') return `Səhv Dəftəri Təkrarı (${questions.length} Sual)`;
-    if (selectedVariant && selectedVariant.startsWith('GF-')) {
-      const found = teacherQuizzesTopic1.find((tq) => tq.shortCode === selectedVariant);
-      return found ? found.title : selectedVariant;
-    }
-    if (selectedVariant && selectedVariant.startsWith('GV-')) {
-      const found = GUVEN_QUIZZES.find((gq) => gq.shortCode === selectedVariant);
-      return found ? found.title : selectedVariant;
-    }
-    return `Variant ${selectedVariant}`;
+  // Reusable Resume Banner component
+  const renderResumeBanner = () => {
+    if (!lastActiveQuiz || !lastActiveQuiz.variant) return null;
+    const baseList = getBaseListForVariant(lastActiveQuiz.variant);
+    const st = computeQuizRowStatus(lastActiveQuiz.variant, baseList);
+    return (
+      <div className="resume-session-banner">
+        <div className="resume-banner-left">
+          <span className="resume-tag">SON QALDIĞINIZ SINAQ</span>
+          <h3 className="resume-title">{lastActiveQuiz.title || getQuizTitleByCode(lastActiveQuiz.variant)}</h3>
+          <p className="resume-meta">
+            Qaldığınız yer: <strong>Sual {(lastActiveQuiz.index || 0) + 1} / {st.total}</strong> • Cavablanıb: <strong>{st.answered}/{st.total} ({st.pct}%)</strong> • Düz: {st.correct} • Səhv: {st.wrong}
+          </p>
+        </div>
+        <div className="resume-banner-right">
+          <button
+            className="btn-resume-now"
+            onClick={() =>
+              handleSelectVariant(
+                lastActiveQuiz.variant,
+                lastActiveQuiz.mode || 'study',
+                lastActiveQuiz.index || 0
+              )
+            }
+          >
+            Qaldığım Sualdan Davam Et (Sual {(lastActiveQuiz.index || 0) + 1}) →
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // Reusable Quiz Row Card with Status Pill + Progress Bar + Resume Button
+  const renderQuizPackRow = (code, badgeText, badgeClass, title, subtitleExtra, qList, btnClass = '') => {
+    const st = computeQuizRowStatus(code, qList);
+    return (
+      <div key={code} className={`clean-row-card status-border-${st.statusType}`}>
+        <div className="clean-row-main">
+          <span className={`clean-row-badge ${badgeClass}`}>{badgeText}</span>
+          <div className="clean-row-text">
+            <div className="row-title-with-status">
+              <h3 className="clean-row-title">{title}</h3>
+              <span className={`quiz-status-pill pill-${st.statusType}`}>{st.statusLabel}</span>
+            </div>
+            <span className="clean-row-meta">
+              {subtitleExtra} • Cavablanıb: <strong>{st.answered}/{st.total}</strong> (Düz: <strong className="text-green">{st.correct}</strong>, Səhv: <strong className="text-red">{st.wrong}</strong>, Boş: {st.unanswered})
+            </span>
+            <div className="row-progress-track">
+              <div
+                className={`row-progress-fill fill-${st.statusType}`}
+                style={{ width: `${st.pct}%` }}
+              />
+            </div>
+          </div>
+        </div>
+        <div className="clean-row-buttons">
+          {st.statusType === 'in_progress' ? (
+            <button
+              className={`btn-row-study btn-resume-highlight ${btnClass}`}
+              onClick={() => handleSelectVariant(code, 'study', st.resumeIdx)}
+            >
+              Davam Et (Sual {st.resumeIdx + 1}) →
+            </button>
+          ) : (
+            <button
+              className={`btn-row-study ${btnClass}`}
+              onClick={() => handleSelectVariant(code, 'study', 0)}
+            >
+              {st.statusType === 'completed' ? 'İzahlara Bax' : 'Təlimə Başla'}
+            </button>
+          )}
+          <button
+            className="btn-row-exam"
+            onClick={() => handleSelectVariant(code, 'exam', 0)}
+          >
+            Sınaq (Vaxtlı)
+          </button>
+          {st.answered > 0 && (
+            <button
+              className="btn-row-reset"
+              title="Bu testin cavablarını sıfırla"
+              onClick={() => handleResetSpecificVariant(code, qList)}
+            >
+              Sıfırla
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -425,40 +848,61 @@ export default function App() {
                 ? 'Rəsmi MİQ Qiymətləndirmə Çərçivəsi üzrə Mövzu Kataloqu'
                 : selectedVariant === null
                 ? 'Mövzu 1.1: Coğrafi kəşflər və tədqiqatlar, coğrafiya elminin inkişafı'
-                : getActiveQuizTitle()}
+                : getQuizTitleByCode(selectedVariant)}
             </h1>
           </div>
 
-          {selectedTopicId && selectedVariant && (
-            <div className="header-actions">
-              <div className="mode-toggle">
-                <button
-                  className={`mode-btn ${mode === 'study' ? 'active' : ''}`}
-                  onClick={() => {
-                    setMode('study');
-                    setExamSubmitted(false);
-                  }}
-                >
-                  Təlim
-                </button>
-                <button
-                  className={`mode-btn ${mode === 'exam' ? 'active' : ''}`}
-                  onClick={() => {
-                    setMode('exam');
-                    setExamSubmitted(false);
-                  }}
-                >
-                  Sınaq
-                </button>
-              </div>
+          <div className="header-actions">
+            {/* Cloud Profile Button */}
+            <button
+              className={`btn-profile-trigger ${profileCreds ? 'profile-connected' : ''}`}
+              onClick={() => {
+                if (profileCreds) {
+                  setLoginName(profileCreds.displayName);
+                  setLoginPin(profileCreds.pin);
+                }
+                setShowProfileModal(true);
+              }}
+            >
+              <span className={`sync-dot dot-${profileCreds ? syncStatus : 'offline'}`} />
+              <span>
+                {profileCreds
+                  ? `${profileCreds.displayName} (${completedPacksCount}/12 Tamamlanıb)`
+                  : 'Şəxsi Profil (Bulud Sinxron)'}
+              </span>
+            </button>
 
-              {mode === 'exam' && !examSubmitted && (
-                <div className={`timer-box ${timeLeft < 300 ? 'timer-urgent' : ''}`}>
-                  <span className="timer-val">{formatTime(timeLeft)}</span>
+            {selectedTopicId && selectedVariant && (
+              <>
+                <div className="mode-toggle">
+                  <button
+                    className={`mode-btn ${mode === 'study' ? 'active' : ''}`}
+                    onClick={() => {
+                      setMode('study');
+                      setExamSubmitted(false);
+                    }}
+                  >
+                    Təlim
+                  </button>
+                  <button
+                    className={`mode-btn ${mode === 'exam' ? 'active' : ''}`}
+                    onClick={() => {
+                      setMode('exam');
+                      setExamSubmitted(false);
+                    }}
+                  >
+                    Sınaq
+                  </button>
                 </div>
-              )}
-            </div>
-          )}
+
+                {mode === 'exam' && !examSubmitted && (
+                  <div className={`timer-box ${timeLeft < 300 ? 'timer-urgent' : ''}`}>
+                    <span className="timer-val">{formatTime(timeLeft)}</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
 
         {selectedTopicId && selectedVariant && (
@@ -473,12 +917,139 @@ export default function App() {
         )}
       </header>
 
+      {/* ======================================================== */}
+      {/* CLOUD PROFILE & PROGRESS TRACKER MODAL                   */}
+      {/* ======================================================== */}
+      {showProfileModal && (
+        <div className="profile-modal-backdrop" onClick={() => setShowProfileModal(false)}>
+          <div className="profile-modal-card" onClick={(e) => e.stopPropagation()}>
+            <div className="profile-modal-header">
+              <div>
+                <span className="badge-academic">Bulud Sinxronizasiyalı Şəxsi Kabinet</span>
+                <h2 className="clean-section-title" style={{ marginTop: '4px' }}>
+                  {profileCreds
+                    ? `Xoş gəldiniz, ${profileCreds.displayName}`
+                    : 'Şəxsi Profilə Giriş və Cihazlararası Sinxronizasiya'}
+                </h2>
+              </div>
+              <button className="btn-close" onClick={() => setShowProfileModal(false)}>X</button>
+            </div>
+
+            {!profileCreds ? (
+              <form className="profile-login-form" onSubmit={handleProfileLogin}>
+                <p className="clean-section-sub" style={{ marginBottom: '12px' }}>
+                  Adınızı və özünüz üçün təyin etdiyiniz 4 rəqəmli PIN-kodu daxil edin. Həm telefonunuzda, həm də kompüterinizdə eyni Ad və PIN-kodla daxil olduqda bütün işlədiyiniz testlər, yarıda qaldığınız suallar və səhv dəftəriniz avtomatik eyni olacaq.
+                </p>
+                <div className="profile-inputs-row">
+                  <div className="profile-field">
+                    <label>Adınız</label>
+                    <input
+                      type="text"
+                      placeholder="Məs: Yusif"
+                      value={loginName}
+                      onChange={(e) => setLoginName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="profile-field">
+                    <label>4 Rəqəmli PIN-kod</label>
+                    <input
+                      type="text"
+                      placeholder="Məs: 1990"
+                      maxLength={12}
+                      value={loginPin}
+                      onChange={(e) => setLoginPin(e.target.value)}
+                      required
+                    />
+                  </div>
+                </div>
+                {syncMessage && <div className="profile-sync-msg">{syncMessage}</div>}
+                <button type="submit" className="btn-topic-primary" style={{ width: '100%', marginTop: '10px' }}>
+                  {syncStatus === 'syncing' ? 'Sinxronlaşdırılır...' : 'Profilə Daxil Ol və Buludda Saxla'}
+                </button>
+              </form>
+            ) : (
+              <div className="profile-connected-box">
+                <div className="profile-creds-strip">
+                  <div>
+                    <span>Aktiv Bulud Profili: <strong>{profileCreds.displayName}</strong> (PIN: <strong>{profileCreds.pin}</strong>)</span>
+                    <span className="sync-badge-live">
+                      {syncStatus === 'syncing' ? 'Buluda yazılır...' : 'Buludla Tam Sinxron'}
+                    </span>
+                  </div>
+                  <button className="btn-quick-outline" onClick={handleProfileLogout}>
+                    Profildən Çıx
+                  </button>
+                </div>
+                {syncMessage && <div className="profile-sync-msg">{syncMessage}</div>}
+              </div>
+            )}
+
+            {/* Overview of all 12 Test Packs in Mövzu 1.1 */}
+            <div className="profile-packs-overview">
+              <div className="profile-summary-counters">
+                <div className="p-counter-box">
+                  <span>Tamamlanan Testlər</span>
+                  <strong className="text-green">{completedPacksCount} / 12</strong>
+                </div>
+                <div className="p-counter-box">
+                  <span>Yarıda Qalan Testlər</span>
+                  <strong style={{ color: '#d97706' }}>{inProgressPacksCount}</strong>
+                </div>
+                <div className="p-counter-box">
+                  <span>Cəmi İşlənilən Sual</span>
+                  <strong className="text-blue">{globalMiqSummary.answered} / 340</strong>
+                </div>
+                <div className="p-counter-box">
+                  <span>Xalis MİQ Ekvivalenti</span>
+                  <strong>{globalMiqSummary.miqEquiv80} / 80 Bal</strong>
+                </div>
+              </div>
+
+              <h3 className="clean-section-title" style={{ fontSize: '14.5px', margin: '14px 0 8px' }}>
+                Mövzu 1.1 üzrə Bütün Sınaqların Cari Vəziyyəti (12 Test Paketi)
+              </h3>
+              <div className="profile-packs-list">
+                {allTopic1PacksSummary.map((item) => (
+                  <div key={item.code} className="profile-pack-item">
+                    <div className="profile-pack-info">
+                      <strong>{item.title}</strong>
+                      <span className={`quiz-status-pill pill-${item.statusType}`}>{item.statusLabel}</span>
+                    </div>
+                    <div className="profile-pack-actions">
+                      <span className="pack-mini-score">
+                        Düz: {item.correct} • Səhv: {item.wrong}
+                      </span>
+                      <button
+                        className="btn-pack-jump"
+                        onClick={() => {
+                          setShowProfileModal(false);
+                          handleSelectVariant(item.code, 'study', item.resumeIdx);
+                        }}
+                      >
+                        {item.statusType === 'in_progress'
+                          ? `Davam Et (Sual ${item.resumeIdx + 1})`
+                          : item.statusType === 'completed'
+                          ? 'Bax'
+                          : 'Başla'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="content-wrap">
         {/* ======================================================== */}
         {/* SCREEN 1: OFFICIAL MİQ FRAMEWORK TOPIC CATALOG           */}
         {/* ======================================================== */}
         {!selectedTopicId ? (
           <div className="catalog-screen">
+            {renderResumeBanner()}
+
             <div className="framework-summary-banner">
               {FRAMEWORK_SECTIONS.map((sec) => (
                 <div key={sec.id} className="fw-summary-card">
@@ -500,7 +1071,9 @@ export default function App() {
                   <div className="topic-card-header">
                     <span className="topic-code-badge">{top.topicCode}</span>
                     {top.active ? (
-                      <span className="topic-status-pill status-ready">Aktiv • 340 Sual + Konspekt</span>
+                      <span className="topic-status-pill status-ready">
+                        Aktiv • Tamamlanıb: {completedPacksCount}/12 Test • Yarıda: {inProgressPacksCount}
+                      </span>
                     ) : (
                       <span className="topic-status-pill status-soon">Növbəti Mərhələdə</span>
                     )}
@@ -548,6 +1121,8 @@ export default function App() {
           /* SCREEN 2: TOPIC 1.1 6-TAB MASTERY HUB                    */
           /* ======================================================== */
           <div className="simple-menu-screen">
+            {renderResumeBanner()}
+
             <div className="clean-tabs">
               <button
                 className={`clean-tab ${hubTab === 'study' ? 'active' : ''}`}
@@ -559,25 +1134,25 @@ export default function App() {
                 className={`clean-tab ${hubTab === 'flashcards' ? 'active' : ''}`}
                 onClick={() => setHubTab('flashcards')}
               >
-                Yaddaş Kartları (65)
+                Yaddaş Kartları ({knownFlashcardsCount}/65)
               </button>
               <button
                 className={`clean-tab ${hubTab === 'guven' ? 'active' : ''}`}
                 onClick={() => setHubTab('guven')}
               >
-                Güvən 2025 (95 Sual)
+                Güvən 2025 ({totalGuvenAnswered}/95)
               </button>
               <button
                 className={`clean-tab ${hubTab === 'textbook' ? 'active' : ''}`}
                 onClick={() => setHubTab('textbook')}
               >
-                Dərslik Testləri (80)
+                Dərslik ({totalTextbookAnswered}/80)
               </button>
               <button
                 className={`clean-tab ${hubTab === 'teacher' ? 'active' : ''}`}
                 onClick={() => setHubTab('teacher')}
               >
-                Müəllim Sınaqları (165)
+                Müəllim ({totalTeacherAnswered}/165)
               </button>
               <button
                 className={`clean-tab ${hubTab === 'analytics' ? 'active' : ''}`}
@@ -805,11 +1380,11 @@ export default function App() {
                   <div>
                     <h2 className="clean-section-title">Güvən Nəşrləri 2025 — Test Bankı (95 Sual)</h2>
                     <p className="clean-section-sub">
-                      «Coğrafiya Tapşırıqlar Toplusu 2025» kitabının 1-ci mövzusu üzrə bütün A, B, C qrup və açıq test tapşırıqları (17 xəritə, klaster və Venn diaqramı ilə)
+                      «Coğrafiya Tapşırıqlar Toplusu 2025» kitabının 1-ci mövzusu üzrə A, B, C qrup və açıq test tapşırıqları • Cəmi işlənilib: <strong>{totalGuvenAnswered}/95</strong>
                     </p>
                   </div>
                   <div className="clean-quick-actions">
-                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('GV-MEGA', 'exam')}>
+                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('GV-MEGA', 'exam', 0)}>
                       Qarışıq Sınaq (25 Sual)
                     </button>
                     <button className="btn-quick-outline" onClick={() => handleSelectVariant('GV-ALL', 'study')}>
@@ -819,36 +1394,16 @@ export default function App() {
                 </div>
 
                 <div className="clean-rows">
-                  {GUVEN_QUIZZES.map((gq) => {
-                    const st = guvenStats[gq.shortCode];
-                    return (
-                      <div key={gq.id} className="clean-row-card">
-                        <div className="clean-row-main">
-                          <span className="clean-row-badge badge-indigo">{gq.code}</span>
-                          <div className="clean-row-text">
-                            <h3 className="clean-row-title">{gq.title}</h3>
-                            <span className="clean-row-meta">
-                              {gq.questionCount} sual ({gq.imageCount} sxem/xəritəli) • İşlənilib: <strong>{st.answered}/{gq.questionCount}</strong> (Düzgün: {st.correct})
-                            </span>
-                          </div>
-                        </div>
-                        <div className="clean-row-buttons">
-                          <button
-                            className="btn-row-study"
-                            onClick={() => handleSelectVariant(gq.shortCode, 'study')}
-                          >
-                            Təlim (İzahlı)
-                          </button>
-                          <button
-                            className="btn-row-exam"
-                            onClick={() => handleSelectVariant(gq.shortCode, 'exam')}
-                          >
-                            Sınaq (Vaxtlı)
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {GUVEN_QUIZZES.map((gq) =>
+                    renderQuizPackRow(
+                      gq.shortCode,
+                      gq.code,
+                      'badge-indigo',
+                      gq.title,
+                      `${gq.questionCount} sual (${gq.imageCount} sxem/xəritəli)`,
+                      gq.questions
+                    )
+                  )}
                 </div>
               </div>
             )}
@@ -861,10 +1416,12 @@ export default function App() {
                 <div className="clean-list-header">
                   <div>
                     <h2 className="clean-section-title">Əsas Dərslik Bazası (Variant A, B, C, D)</h2>
-                    <p className="clean-section-sub">6–11-ci sinif dərslikləri və metodik vəsaitlər əsasında hazırlanmış 80 sual</p>
+                    <p className="clean-section-sub">
+                      6–11-ci sinif dərslikləri və metodik vəsaitlər əsasında 80 sual • Cəmi işlənilib: <strong>{totalTextbookAnswered}/80</strong>
+                    </p>
                   </div>
                   <div className="clean-quick-actions">
-                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('MEGA', 'exam')}>
+                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('MEGA', 'exam', 0)}>
                       Qarışıq Sınaq (20 Sual)
                     </button>
                     <button className="btn-quick-outline" onClick={() => handleSelectVariant('ALL', 'study')}>
@@ -874,36 +1431,16 @@ export default function App() {
                 </div>
 
                 <div className="clean-rows">
-                  {VARIANTS_META.map((vm) => {
-                    const st = variantStats[vm.code];
-                    return (
-                      <div key={vm.code} className="clean-row-card">
-                        <div className="clean-row-main">
-                          <span className="clean-row-badge">{vm.name}</span>
-                          <div className="clean-row-text">
-                            <h3 className="clean-row-title">{vm.subtitle}</h3>
-                            <span className="clean-row-meta">
-                              {vm.qCount} sual • İşlənilib: <strong>{st.answered}/{vm.qCount}</strong> (Düzgün: {st.correct})
-                            </span>
-                          </div>
-                        </div>
-                        <div className="clean-row-buttons">
-                          <button
-                            className="btn-row-study"
-                            onClick={() => handleSelectVariant(vm.code, 'study')}
-                          >
-                            Təlim (İzahlı)
-                          </button>
-                          <button
-                            className="btn-row-exam"
-                            onClick={() => handleSelectVariant(vm.code, 'exam')}
-                          >
-                            Sınaq (Vaxtlı)
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {VARIANTS_META.map((vm) =>
+                    renderQuizPackRow(
+                      vm.code,
+                      vm.name,
+                      '',
+                      vm.subtitle,
+                      `${vm.qCount} sual`,
+                      QUIZ_QUESTIONS.filter((q) => q.variant === vm.code)
+                    )
+                  )}
                 </div>
               </div>
             )}
@@ -916,10 +1453,12 @@ export default function App() {
                 <div className="clean-list-header">
                   <div>
                     <h2 className="clean-section-title">Müəllim Sınaqları (Google Forms Bazası)</h2>
-                    <p className="clean-section-sub">Dərs qrupunda paylaşılan 4 sınaq • 165 sual • 35 xəritə və sxem</p>
+                    <p className="clean-section-sub">
+                      Dərs qrupunda paylaşılan 4 sınaq • 165 sual • Cəmi işlənilib: <strong>{totalTeacherAnswered}/165</strong>
+                    </p>
                   </div>
                   <div className="clean-quick-actions">
-                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('GF-MEGA', 'exam')}>
+                    <button className="btn-quick-outline" onClick={() => handleSelectVariant('GF-MEGA', 'exam', 0)}>
                       Qarışıq Sınaq (25 Sual)
                     </button>
                     <button className="btn-quick-outline" onClick={() => handleSelectVariant('GF-ALL', 'study')}>
@@ -929,36 +1468,17 @@ export default function App() {
                 </div>
 
                 <div className="clean-rows">
-                  {teacherQuizzesTopic1.map((tq, idx) => {
-                    const st = teacherStats[tq.shortCode];
-                    return (
-                      <div key={tq.id} className="clean-row-card">
-                        <div className="clean-row-main">
-                          <span className="clean-row-badge badge-teal">Sınaq {idx + 1}</span>
-                          <div className="clean-row-text">
-                            <h3 className="clean-row-title">{tq.title}</h3>
-                            <span className="clean-row-meta">
-                              {tq.questionCount} sual ({tq.imageCount} şəkilli) • İşlənilib: <strong>{st.answered}/{tq.questionCount}</strong> (Düzgün: {st.correct})
-                            </span>
-                          </div>
-                        </div>
-                        <div className="clean-row-buttons">
-                          <button
-                            className="btn-row-study btn-teal"
-                            onClick={() => handleSelectVariant(tq.shortCode, 'study')}
-                          >
-                            Təlim (İzahlı)
-                          </button>
-                          <button
-                            className="btn-row-exam"
-                            onClick={() => handleSelectVariant(tq.shortCode, 'exam')}
-                          >
-                            Sınaq (Vaxtlı)
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {teacherQuizzesTopic1.map((tq, idx) =>
+                    renderQuizPackRow(
+                      tq.shortCode,
+                      `Sınaq ${idx + 1}`,
+                      'badge-teal',
+                      tq.title,
+                      `${tq.questionCount} sual (${tq.imageCount} şəkilli)`,
+                      tq.questions,
+                      'btn-teal'
+                    )
+                  )}
                 </div>
               </div>
             )}
@@ -979,7 +1499,7 @@ export default function App() {
                     <div className="clean-quick-actions">
                       <button
                         className="btn-row-study"
-                        onClick={() => handleSelectVariant('WRONG-ALL', 'study')}
+                        onClick={() => handleSelectVariant('WRONG-ALL', 'study', 0)}
                       >
                         Bütün Səhvləri Təkrar İşlə ({allWrongQuestions.length} Sual)
                       </button>
@@ -987,7 +1507,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Official MİQ Formula Summary Box */}
                 <div className="miq-formula-banner">
                   <div className="miq-stat-item">
                     <span className="miq-stat-lbl">İşlənilən Suallar</span>
@@ -1011,14 +1530,36 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Mistake Bank List */}
+                {examHistory.length > 0 && (
+                  <div style={{ marginBottom: '24px' }}>
+                    <h3 className="clean-section-title" style={{ marginBottom: '10px' }}>
+                      Tamamlanmış Vaxtlı Sınaqların Tarixçəsi ({examHistory.length})
+                    </h3>
+                    <div className="clean-rows">
+                      {examHistory.slice(0, 10).map((eh) => (
+                        <div key={eh.id} className="clean-row-card">
+                          <div className="clean-row-main">
+                            <span className="clean-row-badge">{eh.miqScore80} / 80 Bal</span>
+                            <div className="clean-row-text">
+                              <h4 className="clean-row-title">{eh.title}</h4>
+                              <span className="clean-row-meta">
+                                Tarix: {eh.date} • Düz: <strong className="text-green">{eh.correct}</strong> • Səhv: <strong className="text-red">{eh.wrong}</strong> (Cəmi: {eh.total})
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {allWrongQuestions.length > 0 && (
                   <div className="mistake-notebook-section">
                     <h3 className="clean-section-title" style={{ marginBottom: '12px' }}>
                       Səhv Cavablandırdığınız Suallar ({allWrongQuestions.length})
                     </h3>
                     <div className="mistake-cards-list">
-                      {allWrongQuestions.map((wq, i) => (
+                      {allWrongQuestions.map((wq) => (
                         <div key={wq.id} className="mistake-item-card">
                           <div className="mistake-item-top">
                             <span className="q-badge">{wq.id}</span>
@@ -1075,7 +1616,11 @@ export default function App() {
               <div className="q-nav-status">
                 <span>Sual <strong>{currentIndex + 1}</strong> / {questions.length}</span>
                 <span className="status-dot">•</span>
-                <span>Cavablanan: {questions.filter((q) => userAnswers[q.id]).length}</span>
+                <span>Cavablanan: <strong>{questions.filter((q) => userAnswers[q.id]).length}/{questions.length}</strong></span>
+                <span className="status-dot">•</span>
+                <span className="text-green">Düz: <strong>{stats.correct}</strong></span>
+                <span className="status-dot">•</span>
+                <span className="text-red">Səhv: <strong>{stats.wrong}</strong></span>
               </div>
 
               <div className="action-buttons">
@@ -1083,7 +1628,7 @@ export default function App() {
                   className="btn-secondary"
                   onClick={() => setShowQuestionDrawer(!showQuestionDrawer)}
                 >
-                  Suallar Cədvəli
+                  Suallar Cədvəli ({questions.filter((q) => userAnswers[q.id]).length}/{questions.length})
                 </button>
                 <button className="btn-secondary" onClick={handleShuffle}>
                   Qarışdır
@@ -1097,7 +1642,7 @@ export default function App() {
             {showQuestionDrawer && (
               <div className="drawer-card">
                 <div className="drawer-header">
-                  <span>Suala Keçid:</span>
+                  <span>Suala Keçid (Yaşıl = Düz, Qırmızı = Səhv, Boz = Boş):</span>
                   <button className="btn-close" onClick={() => setShowQuestionDrawer(false)}>X</button>
                 </div>
                 <div className="q-grid">
@@ -1261,7 +1806,7 @@ export default function App() {
                         className="btn-finish-exam"
                         onClick={() => {
                           if (window.confirm('İmtahanı bitirmək istədiyinizdən əminsiniz?')) {
-                            setExamSubmitted(true);
+                            handleFinishExam();
                           }
                         }}
                       >
