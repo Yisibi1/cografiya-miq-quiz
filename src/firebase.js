@@ -13,8 +13,8 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 
-export function buildProfileKey(name, pin) {
-  const cleanName = (name || '')
+export function normalizeUsername(username) {
+  const clean = (username || '')
     .trim()
     .toLowerCase()
     .replace(/ə/g, 'e')
@@ -24,41 +24,57 @@ export function buildProfileKey(name, pin) {
     .replace(/ş/g, 's')
     .replace(/ç/g, 'c')
     .replace(/ğ/g, 'g')
-    .replace(/[^a-z0-9]/g, '');
-  const cleanPin = (pin || '').trim().replace(/[^a-zA-Z0-9]/g, '');
-  return `${cleanName || 'user'}_${cleanPin}`;
+    .replace(/[^a-z0-9_.-]/g, '');
+  return `user_${clean || 'guest'}`;
 }
 
-export async function fetchOrCreateCloudProfile(displayName, pin, localSnapshot) {
-  const profileKey = buildProfileKey(displayName, pin);
+export async function registerCloudAccount(fullName, username, password, localSnapshot) {
+  const profileKey = normalizeUsername(username);
   const docRef = doc(db, 'profiles', profileKey);
   const snap = await getDoc(docRef);
 
   if (snap.exists()) {
-    const cloudData = snap.data();
-    return {
-      profileKey,
-      isNew: false,
-      data: cloudData
-    };
-  } else {
-    const initialPayload = {
-      displayName: displayName.trim(),
-      pin: pin.trim(),
-      userAnswers: localSnapshot.userAnswers || {},
-      quizProgress: localSnapshot.quizProgress || {},
-      fcStatus: localSnapshot.fcStatus || {},
-      examHistory: localSnapshot.examHistory || [],
-      lastActiveQuiz: localSnapshot.lastActiveQuiz || null,
-      updatedAt: new Date().toISOString()
-    };
-    await setDoc(docRef, initialPayload);
-    return {
-      profileKey,
-      isNew: true,
-      data: initialPayload
-    };
+    throw new Error('USERNAME_EXISTS');
   }
+
+  const initialPayload = {
+    displayName: fullName.trim().slice(0, 60),
+    pin: password.trim(),
+    userAnswers: localSnapshot.userAnswers || {},
+    quizProgress: localSnapshot.quizProgress || {},
+    fcStatus: localSnapshot.fcStatus || {},
+    examHistory: (localSnapshot.examHistory || []).slice(0, 50),
+    lastActiveQuiz: localSnapshot.lastActiveQuiz || null,
+    updatedAt: new Date().toISOString()
+  };
+
+  await setDoc(docRef, initialPayload);
+  return {
+    profileKey,
+    username: username.trim().toLowerCase(),
+    data: initialPayload
+  };
+}
+
+export async function loginCloudAccount(username, password) {
+  const profileKey = normalizeUsername(username);
+  const docRef = doc(db, 'profiles', profileKey);
+  const snap = await getDoc(docRef);
+
+  if (!snap.exists()) {
+    throw new Error('USER_NOT_FOUND');
+  }
+
+  const cloudData = snap.data();
+  if (cloudData.pin !== password.trim()) {
+    throw new Error('WRONG_PASSWORD');
+  }
+
+  return {
+    profileKey,
+    username: username.trim().toLowerCase(),
+    data: cloudData
+  };
 }
 
 export async function syncProfileToCloud(profileKey, payload) {

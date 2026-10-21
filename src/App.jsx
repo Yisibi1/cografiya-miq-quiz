@@ -6,7 +6,8 @@ import { GUVEN_QUIZZES } from './data/guvenQuizzes';
 import { TOPIC_1_AUDIO, TOPIC_1_CHAPTERS } from './data/topic1StudyData';
 import { TOPIC_1_FLASHCARDS } from './data/topic1Flashcards';
 import {
-  fetchOrCreateCloudProfile,
+  loginCloudAccount,
+  registerCloudAccount,
   syncProfileToCloud,
   subscribeToCloudProfile
 } from './firebase';
@@ -52,15 +53,21 @@ const VARIANTS_META = [
 ];
 
 export default function App() {
-  const [selectedTopicId, setSelectedTopicId] = useState(null);
-  // Tabs: 'study' | 'flashcards' | 'guven' | 'textbook' | 'teacher' | 'analytics'
+  // Top-level portal navigation when logged in:
+  // 'dashboard' | 'topics' | 'topic_detail' | 'mistakes'
+  const [portalView, setPortalView] = useState('dashboard');
+  const [selectedTopicId, setSelectedTopicId] = useState('1.1');
+  // Tabs inside Topic 1.1: 'guven' | 'textbook' | 'teacher' | 'study' | 'flashcards' | 'analytics'
   const [hubTab, setHubTab] = useState('guven');
   const [selectedVariant, setSelectedVariant] = useState(null);
   const [mode, setMode] = useState('study'); // 'study' | 'exam'
   const [questions, setQuestions] = useState(QUIZ_QUESTIONS);
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // User Profile & Cloud Sync state
+  // Dashboard filter for 12 test packs: 'ALL' | 'in_progress' | 'completed' | 'not_started'
+  const [dashPackFilter, setDashPackFilter] = useState('ALL');
+
+  // Mandatory Authentication & Cloud Profile state
   const [profileCreds, setProfileCreds] = useState(() => {
     try {
       const saved = localStorage.getItem('miq_profile_creds');
@@ -69,11 +76,13 @@ export default function App() {
       return null;
     }
   });
-  const [showProfileModal, setShowProfileModal] = useState(false);
-  const [loginName, setLoginName] = useState('');
-  const [loginPin, setLoginPin] = useState('');
+  const [authTab, setAuthTab] = useState('login'); // 'login' | 'register'
+  const [fullNameInput, setFullNameInput] = useState('');
+  const [usernameInput, setUsernameInput] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
+  const [roleInput, setRoleInput] = useState('MİQ Namizədi (90+ Hədəf)');
+  const [authError, setAuthError] = useState('');
   const [syncStatus, setSyncStatus] = useState('idle'); // 'idle' | 'syncing' | 'synced' | 'error'
-  const [syncMessage, setSyncMessage] = useState('');
   const isApplyingRemoteRef = useRef(false);
 
   // Saved quiz answers
@@ -182,7 +191,7 @@ export default function App() {
     }
   }, [fcStatus]);
 
-  // Subscribe to real-time Cloud Profile updates if logged in
+  // Subscribe to real-time Cloud Profile updates when logged in
   useEffect(() => {
     if (!profileCreds?.profileKey) return;
     setSyncStatus('syncing');
@@ -227,42 +236,35 @@ export default function App() {
       })
         .then(() => setSyncStatus('synced'))
         .catch(() => setSyncStatus('error'));
-    }, 600);
+    }, 500);
     return () => clearTimeout(timer);
   }, [userAnswers, quizProgress, fcStatus, examHistory, lastActiveQuiz, profileCreds]);
 
-  // Handle login / profile creation
-  const handleProfileLogin = async (e) => {
+  // Handle Login
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    const trimmedName = loginName.trim();
-    const trimmedPin = loginPin.trim();
-    if (trimmedName.length < 2) {
-      setSyncMessage('Zəhmət olmasa adınızı daxil edin (ən azı 2 hərf).');
+    setAuthError('');
+    const u = usernameInput.trim();
+    const p = passwordInput.trim();
+    if (u.length < 2) {
+      setAuthError('İstifadəçi adını daxil edin (ən azı 2 simvol).');
       return;
     }
-    if (trimmedPin.length < 4 || trimmedPin.length > 12) {
-      setSyncMessage('PIN-kod 4–12 simvol arasında olmalıdır (məsələn: 1234).');
+    if (p.length < 4 || p.length > 12) {
+      setAuthError('Şifrə 4–12 simvol arasında olmalıdır.');
       return;
     }
     setSyncStatus('syncing');
-    setSyncMessage('Bulud bazası ilə əlaqə qurulur...');
     try {
-      const result = await fetchOrCreateCloudProfile(trimmedName, trimmedPin, {
-        userAnswers,
-        quizProgress,
-        fcStatus,
-        examHistory,
-        lastActiveQuiz
-      });
-
+      const result = await loginCloudAccount(u, p);
       const mergedAnswers = { ...(result.data.userAnswers || {}), ...userAnswers };
       const mergedProgress = { ...(result.data.quizProgress || {}), ...quizProgress };
       const mergedFc = { ...(result.data.fcStatus || {}), ...fcStatus };
       const mergedHistory =
-        examHistory.length >= (result.data.examHistory || []).length
-          ? examHistory
-          : result.data.examHistory || [];
-      const mergedLastActive = lastActiveQuiz || result.data.lastActiveQuiz || null;
+        (result.data.examHistory || []).length >= examHistory.length
+          ? result.data.examHistory || []
+          : examHistory;
+      const mergedLastActive = result.data.lastActiveQuiz || lastActiveQuiz || null;
 
       setUserAnswers(mergedAnswers);
       setQuizProgress(mergedProgress);
@@ -272,8 +274,9 @@ export default function App() {
 
       const creds = {
         profileKey: result.profileKey,
-        displayName: result.data.displayName || trimmedName,
-        pin: trimmedPin
+        username: result.username,
+        displayName: result.data.displayName || u,
+        pin: p
       };
       setProfileCreds(creds);
       localStorage.setItem('miq_profile_creds', JSON.stringify(creds));
@@ -287,25 +290,77 @@ export default function App() {
         examHistory: mergedHistory,
         lastActiveQuiz: mergedLastActive
       });
-
       setSyncStatus('synced');
-      setSyncMessage(
-        result.isNew
-          ? 'Yeni bulud profili yaradıldı və bütün nəticələriniz yadda saxlanıldı.'
-          : 'Profiliniz bərpa edildi və cihazlararası sinxronlaşdırıldı.'
-      );
+      setPortalView('dashboard');
     } catch (err) {
-      console.error(err);
-      setSyncStatus('error');
-      setSyncMessage('Bulud sinxronizasiyası zamanı xəta baş verdi. İnternet bağlantısını yoxlayın.');
+      setSyncStatus('idle');
+      if (err.message === 'USER_NOT_FOUND') {
+        setAuthError('Bu istifadəçi adı tapılmadı. İlk dəfə daxil olursunuzsa «Qeydiyyat» bölməsindən hesab yaradın.');
+      } else if (err.message === 'WRONG_PASSWORD') {
+        setAuthError('Daxil etdiyiniz şifrə yanlışdır.');
+      } else {
+        setAuthError('Bağlantı xətası baş verdi. İnternet bağlantınızı yoxlayın.');
+      }
+    }
+  };
+
+  // Handle Register
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError('');
+    const fn = fullNameInput.trim();
+    const u = usernameInput.trim();
+    const p = passwordInput.trim();
+    if (fn.length < 2) {
+      setAuthError('Ad və soyadınızı daxil edin.');
+      return;
+    }
+    if (u.length < 2) {
+      setAuthError('İstifadəçi adı ən azı 2 simvol olmalıdır.');
+      return;
+    }
+    if (p.length < 4 || p.length > 12) {
+      setAuthError('Şifrə 4–12 simvol arasında olmalıdır.');
+      return;
+    }
+    setSyncStatus('syncing');
+    try {
+      const displayWithRole = `${fn} (${roleInput})`.slice(0, 60);
+      const result = await registerCloudAccount(displayWithRole, u, p, {
+        userAnswers,
+        quizProgress,
+        fcStatus,
+        examHistory,
+        lastActiveQuiz
+      });
+      const creds = {
+        profileKey: result.profileKey,
+        username: result.username,
+        displayName: displayWithRole,
+        pin: p
+      };
+      setProfileCreds(creds);
+      localStorage.setItem('miq_profile_creds', JSON.stringify(creds));
+      setSyncStatus('synced');
+      setPortalView('dashboard');
+    } catch (err) {
+      setSyncStatus('idle');
+      if (err.message === 'USERNAME_EXISTS') {
+        setAuthError('Bu istifadəçi adı artıq mövcuddur. «Daxil Ol» bölməsindən öz şifrənizlə giriş edin.');
+      } else {
+        setAuthError('Qeydiyyat zamanı xəta baş verdi. Yenidən cəhd edin.');
+      }
     }
   };
 
   const handleProfileLogout = () => {
-    setProfileCreds(null);
-    localStorage.removeItem('miq_profile_creds');
-    setSyncStatus('idle');
-    setSyncMessage('');
+    if (window.confirm('Hesabınızdan çıxmaq istəyirsiniz? (Nəticələriniz buludda qorunur)')) {
+      setProfileCreds(null);
+      localStorage.removeItem('miq_profile_creds');
+      setSelectedVariant(null);
+      setSyncStatus('idle');
+      setAuthError('');
+    }
   };
 
   const getQuizTitleByCode = (varCode) => {
@@ -330,7 +385,7 @@ export default function App() {
 
   // Track currentIndex changes inside active quiz so user can resume from exact question
   useEffect(() => {
-    if (!selectedTopicId || !selectedVariant) return;
+    if (!selectedVariant) return;
     const title = getQuizTitleByCode(selectedVariant);
     const nowIso = new Date().toISOString();
     setQuizProgress((prev) => ({
@@ -349,11 +404,11 @@ export default function App() {
       title,
       updatedAt: nowIso
     });
-  }, [selectedTopicId, selectedVariant, currentIndex, mode, questions.length]);
+  }, [selectedVariant, currentIndex, mode, questions.length]);
 
   useEffect(() => {
     let timer = null;
-    if (selectedTopicId && selectedVariant && mode === 'exam' && !examSubmitted && timeLeft > 0) {
+    if (selectedVariant && mode === 'exam' && !examSubmitted && timeLeft > 0) {
       timer = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
@@ -366,7 +421,7 @@ export default function App() {
       }, 1000);
     }
     return () => clearInterval(timer);
-  }, [selectedTopicId, selectedVariant, mode, examSubmitted, timeLeft]);
+  }, [selectedVariant, mode, examSubmitted, timeLeft]);
 
   const currentQ = questions[currentIndex];
 
@@ -389,7 +444,6 @@ export default function App() {
     return QUIZ_QUESTIONS.filter((q) => q.variant === varCode);
   };
 
-  // Find first unanswered question index or saved lastIndex for smart resume
   const getSmartResumeIndex = (varCode, list) => {
     const savedIdx = quizProgress[varCode]?.lastIndex;
     if (typeof savedIdx === 'number' && savedIdx >= 0 && savedIdx < list.length) {
@@ -453,6 +507,7 @@ export default function App() {
     const startIdx =
       explicitStartIndex !== null ? explicitStartIndex : getSmartResumeIndex(varCode, targetList);
     setCurrentIndex(Math.min(Math.max(0, startIdx), Math.max(0, targetList.length - 1)));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleResetSpecificVariant = (varCode, list) => {
@@ -510,7 +565,6 @@ export default function App() {
 
   const handleFinishExam = () => {
     setExamSubmitted(true);
-    // Record in examHistory
     let correct = 0;
     let wrong = 0;
     questions.forEach((q) => {
@@ -545,7 +599,6 @@ export default function App() {
     setMode('study');
   };
 
-  // Official MİQ stats calculation (4 wrong cancels 1 right)
   const stats = useMemo(() => {
     let correct = 0;
     let wrong = 0;
@@ -570,7 +623,6 @@ export default function App() {
     };
   }, [questions, userAnswers]);
 
-  // Helper to compute detailed progress status for any quiz row
   const computeQuizRowStatus = (varCode, qList) => {
     const total = qList.length;
     let answered = 0;
@@ -594,11 +646,11 @@ export default function App() {
         ? firstUnanswered
         : 0;
 
-    let statusType = 'not_started'; // 'completed' | 'in_progress' | 'not_started'
+    let statusType = 'not_started';
     let statusLabel = 'Başlanmayıb';
     if (answered >= total && total > 0) {
       statusType = 'completed';
-      statusLabel = `Tamamlanıb (100%)`;
+      statusLabel = 'Tamamlanıb (100%)';
     } else if (answered > 0 || (typeof savedLastIdx === 'number' && savedLastIdx > 0)) {
       statusType = 'in_progress';
       statusLabel = `Yarıda qalıb • Sual ${resumeIdx + 1}/${total} (${pct}%)`;
@@ -635,32 +687,45 @@ export default function App() {
     });
     const netCorrect = Math.max(0, correct - wrong / 4);
     const miqEquiv80 = answered > 0 ? ((netCorrect / answered) * 80).toFixed(1) : '0.0';
+    const accuracyPct = answered > 0 ? Math.round((correct / answered) * 100) : 0;
     return {
       total: ALL_COMBINED_QUESTIONS.length,
       answered,
       correct,
       wrong,
+      accuracyPct,
       netCorrect: netCorrect.toFixed(2),
       miqEquiv80
     };
   }, [userAnswers]);
 
-  // All 12 individual test packs in Topic 1.1 to summarize completed vs in-progress
   const allTopic1PacksSummary = useMemo(() => {
     const packs = [
       ...GUVEN_QUIZZES.map((gq) => ({
         code: gq.shortCode,
+        bankName: 'Güvən 2025',
+        badgeText: gq.code,
+        badgeClass: 'badge-indigo',
         title: gq.title,
+        subtitleExtra: `${gq.questionCount} sual (${gq.imageCount} sxemli)`,
         questions: gq.questions
       })),
       ...VARIANTS_META.map((vm) => ({
         code: vm.code,
-        title: `${vm.name}: ${vm.subtitle}`,
+        bankName: 'Dərslik Bazası',
+        badgeText: vm.name,
+        badgeClass: '',
+        title: `${vm.name} — ${vm.subtitle}`,
+        subtitleExtra: `${vm.qCount} sual`,
         questions: QUIZ_QUESTIONS.filter((q) => q.variant === vm.code)
       })),
-      ...teacherQuizzesTopic1.map((tq) => ({
+      ...teacherQuizzesTopic1.map((tq, idx) => ({
         code: tq.shortCode,
+        bankName: 'Müəllim Sınağı',
+        badgeText: `Sınaq ${idx + 1}`,
+        badgeClass: 'badge-teal',
         title: tq.title,
+        subtitleExtra: `${tq.questionCount} sual (${tq.imageCount} şəkilli)`,
         questions: tq.questions
       }))
     ];
@@ -671,7 +736,13 @@ export default function App() {
   }, [userAnswers, quizProgress]);
 
   const completedPacksCount = allTopic1PacksSummary.filter((p) => p.statusType === 'completed').length;
-  const inProgressPacksCount = allTopic1PacksSummary.filter((p) => p.statusType === 'in_progress').length;
+  const inProgressPacks = allTopic1PacksSummary.filter((p) => p.statusType === 'in_progress');
+  const notStartedPacksCount = allTopic1PacksSummary.filter((p) => p.statusType === 'not_started').length;
+
+  const filteredDashboardPacks = useMemo(() => {
+    if (dashPackFilter === 'ALL') return allTopic1PacksSummary;
+    return allTopic1PacksSummary.filter((p) => p.statusType === dashPackFilter);
+  }, [allTopic1PacksSummary, dashPackFilter]);
 
   const categoryAnalytics = useMemo(() => {
     const catMap = {};
@@ -730,7 +801,6 @@ export default function App() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Reusable Resume Banner component
   const renderResumeBanner = () => {
     if (!lastActiveQuiz || !lastActiveQuiz.variant) return null;
     const baseList = getBaseListForVariant(lastActiveQuiz.variant);
@@ -762,7 +832,6 @@ export default function App() {
     );
   };
 
-  // Reusable Quiz Row Card with Status Pill + Progress Bar + Resume Button
   const renderQuizPackRow = (code, badgeText, badgeClass, title, subtitleExtra, qList, btnClass = '') => {
     const st = computeQuizRowStatus(code, qList);
     return (
@@ -821,58 +890,255 @@ export default function App() {
     );
   };
 
+  // ==========================================================
+  // MANDATORY AUTH GATE: NO TESTS ACCESSIBLE WITHOUT LOGIN
+  // ==========================================================
+  if (!profileCreds) {
+    return (
+      <div className="auth-gate-wrapper">
+        <div className="auth-gate-container">
+          <div className="auth-info-panel">
+            <span className="auth-brand-pill">MİQ COĞRAFİYA • 90+ HƏDƏF PLATFORMASI</span>
+            <h1 className="auth-hero-title">
+              Rəsmi MİQ Qiymətləndirmə Çərçivəsi üzrə İnteraktiv Sınaq və Hazırlıq Mərkəzi
+            </h1>
+            <p className="auth-hero-desc">
+              Bütün sınaq testlərinə, Güvən 2025 tapşırıqlarına, izahlı dərslik konspektlərinə və şəxsi nəticə tarixçənizə daxil olmaq üçün hesabınıza giriş edin.
+            </p>
+
+            <div className="auth-features-list">
+              <div className="auth-feature-item">
+                <strong>340 İnteraktiv Test Sualı (Mövzu 1.1)</strong>
+                <span>Güvən 2025 (95 sual), Dərslik Bazası (80 sual) və Müəllim Sınaqları (165 sual)</span>
+              </div>
+              <div className="auth-feature-item">
+                <strong>Yarıda Qalan Testdən Davam Etmə</strong>
+                <span>Hansı testi işlədiyiniz, neçənci sualda qaldığınız və düz/səhv sayınız avtomatik qorunur</span>
+              </div>
+              <div className="auth-feature-item">
+                <strong>Cihazlararası Bulud Sinxronizasiyası</strong>
+                <span>Həm telefonunuzdan, həm də kompüterinizdən eyni hesabla daxil olub qaldığınız yerdən davam edin</span>
+              </div>
+              <div className="auth-feature-item">
+                <strong>Rəsmi MİQ Bal Düsturu (4 Səhv = -1 Düz) və Səhv Dəftəri</strong>
+                <span>İmtahan standartına uyğun 80 bal üzərindən xalis hesablama və səhvlərin təkrar işlənməsi</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="auth-form-panel">
+            <div className="auth-tabs-bar">
+              <button
+                type="button"
+                className={`auth-tab-btn ${authTab === 'login' ? 'active' : ''}`}
+                onClick={() => {
+                  setAuthTab('login');
+                  setAuthError('');
+                }}
+              >
+                Daxil Ol (Giriş)
+              </button>
+              <button
+                type="button"
+                className={`auth-tab-btn ${authTab === 'register' ? 'active' : ''}`}
+                onClick={() => {
+                  setAuthTab('register');
+                  setAuthError('');
+                }}
+              >
+                Qeydiyyatdan Keç
+              </button>
+            </div>
+
+            {authTab === 'login' ? (
+              <form className="auth-form-body" onSubmit={handleLoginSubmit}>
+                <h2 className="auth-form-title">Şəxsi Kabinetə Giriş</h2>
+                <p className="auth-form-sub">
+                  Qeydiyyatdan keçdiyiniz istifadəçi adı və şifrənizi daxil edin.
+                </p>
+
+                <div className="auth-input-group">
+                  <label>İstifadəçi adı (və ya E-poçt)</label>
+                  <input
+                    type="text"
+                    placeholder="Məsələn: yusif"
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="auth-input-group">
+                  <label>Şifrə (4–12 simvol)</label>
+                  <input
+                    type="password"
+                    placeholder="Şifrənizi daxil edin"
+                    maxLength={12}
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    required
+                  />
+                </div>
+
+                {authError && <div className="auth-error-box">{authError}</div>}
+
+                <button type="submit" className="btn-auth-submit" disabled={syncStatus === 'syncing'}>
+                  {syncStatus === 'syncing' ? 'Yoxlanılır...' : 'Kabinetə Daxil Ol →'}
+                </button>
+
+                <div className="auth-switch-footer">
+                  <span>Hesabınız yoxdur?</span>
+                  <button
+                    type="button"
+                    className="btn-link-inline"
+                    onClick={() => {
+                      setAuthTab('register');
+                      setAuthError('');
+                    }}
+                  >
+                    Yeni Hesab Yaradın
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form className="auth-form-body" onSubmit={handleRegisterSubmit}>
+                <h2 className="auth-form-title">Yeni İstifadəçi Qeydiyyatı</h2>
+                <p className="auth-form-sub">
+                  Test nəticələrinizin və yarıda qalan sınaqlarınızın yadda saxlanılması üçün hesab yaradın.
+                </p>
+
+                <div className="auth-input-group">
+                  <label>Ad və Soyadınız</label>
+                  <input
+                    type="text"
+                    placeholder="Məsələn: Yusif Vahabzadə"
+                    value={fullNameInput}
+                    onChange={(e) => setFullNameInput(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="auth-input-group">
+                  <label>İstifadəçi adı (Giriş üçün)</label>
+                  <input
+                    type="text"
+                    placeholder="Məsələn: yusif"
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="auth-input-group">
+                  <label>Şifrə təyin edin (4–12 simvol)</label>
+                  <input
+                    type="password"
+                    placeholder="Ən azı 4 simvol"
+                    maxLength={12}
+                    value={passwordInput}
+                    onChange={(e) => setPasswordInput(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div className="auth-input-group">
+                  <label>Hazırlıq İstiqaməti</label>
+                  <select value={roleInput} onChange={(e) => setRoleInput(e.target.value)}>
+                    <option value="MİQ Namizədi (90+ Hədəf)">MİQ Namizədi (90+ Hədəf)</option>
+                    <option value="Sertifikasiya">Sertifikasiya İmtahanı</option>
+                    <option value="Müəllim">Coğrafiya Müəllimi</option>
+                    <option value="Abituriyent / Şagird">Abituriyent / Şagird</option>
+                  </select>
+                </div>
+
+                {authError && <div className="auth-error-box">{authError}</div>}
+
+                <button type="submit" className="btn-auth-submit" disabled={syncStatus === 'syncing'}>
+                  {syncStatus === 'syncing' ? 'Hesab Yaradılır...' : 'Qeydiyyatı Tamamla və Başla →'}
+                </button>
+
+                <div className="auth-switch-footer">
+                  <span>Artıq hesabınız var?</span>
+                  <button
+                    type="button"
+                    className="btn-link-inline"
+                    onClick={() => {
+                      setAuthTab('login');
+                      setAuthError('');
+                    }}
+                  >
+                    Daxil Olun
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="app-container">
-      {/* Header */}
+      {/* Top Quiz Platform Navigation Header */}
       <header className="main-header">
         <div className="header-inner">
           <div className="brand-block">
-            {selectedTopicId ? (
+            {selectedVariant !== null ? (
               <button
                 className="btn-back-catalog"
-                onClick={() => {
-                  if (selectedVariant !== null) {
-                    setSelectedVariant(null);
-                  } else {
-                    setSelectedTopicId(null);
-                  }
-                }}
+                onClick={() => setSelectedVariant(null)}
               >
-                {selectedVariant !== null ? '← Mövzu Menyusuna Qayıt' : '← Rəsmi Çərçivə Siyahısına Qayıt'}
+                ← Sınaqdan Çıx (Nəticə Yadda Saxlanılıb)
               </button>
             ) : (
-              <span className="badge-academic">MİQ Coğrafiya «90+ Hədəf» Mərkəzi • Rəsmi Çərçivə (40 Sual = 80 Bal)</span>
+              <span className="badge-academic">MİQ Coğrafiya «90+ Hədəf» Quiz Platforması</span>
             )}
             <h1 className="header-title">
-              {!selectedTopicId
-                ? 'Rəsmi MİQ Qiymətləndirmə Çərçivəsi üzrə Mövzu Kataloqu'
-                : selectedVariant === null
-                ? 'Mövzu 1.1: Coğrafi kəşflər və tədqiqatlar, coğrafiya elminin inkişafı'
-                : getQuizTitleByCode(selectedVariant)}
+              {selectedVariant !== null
+                ? getQuizTitleByCode(selectedVariant)
+                : portalView === 'dashboard'
+                ? 'Şəxsi Kabinet və Test İzləmə Paneli'
+                : portalView === 'topics'
+                ? 'Rəsmi MİQ Qiymətləndirmə Çərçivəsi (Mövzu Kataloqu)'
+                : portalView === 'mistakes'
+                ? `Səhv Dəftərim (${allWrongQuestions.length} Sual)`
+                : 'Mövzu 1.1: Coğrafi kəşflər və tədqiqatlar'}
             </h1>
           </div>
 
           <div className="header-actions">
-            {/* Cloud Profile Button */}
-            <button
-              className={`btn-profile-trigger ${profileCreds ? 'profile-connected' : ''}`}
-              onClick={() => {
-                if (profileCreds) {
-                  setLoginName(profileCreds.displayName);
-                  setLoginPin(profileCreds.pin);
-                }
-                setShowProfileModal(true);
-              }}
-            >
-              <span className={`sync-dot dot-${profileCreds ? syncStatus : 'offline'}`} />
-              <span>
-                {profileCreds
-                  ? `${profileCreds.displayName} (${completedPacksCount}/12 Tamamlanıb)`
-                  : 'Şəxsi Profil (Bulud Sinxron)'}
-              </span>
-            </button>
-
-            {selectedTopicId && selectedVariant && (
+            {selectedVariant === null ? (
+              <nav className="portal-top-nav">
+                <button
+                  className={`portal-nav-btn ${portalView === 'dashboard' ? 'active' : ''}`}
+                  onClick={() => setPortalView('dashboard')}
+                >
+                  Kabinetim ({completedPacksCount}/12)
+                </button>
+                <button
+                  className={`portal-nav-btn ${portalView === 'topic_detail' ? 'active' : ''}`}
+                  onClick={() => {
+                    setSelectedTopicId('1.1');
+                    setPortalView('topic_detail');
+                  }}
+                >
+                  Mövzu 1.1 Testləri
+                </button>
+                <button
+                  className={`portal-nav-btn ${portalView === 'topics' ? 'active' : ''}`}
+                  onClick={() => setPortalView('topics')}
+                >
+                  Rəsmi Çərçivə
+                </button>
+                <button
+                  className={`portal-nav-btn ${portalView === 'mistakes' ? 'active' : ''}`}
+                  onClick={() => setPortalView('mistakes')}
+                >
+                  Səhv Dəftəri ({allWrongQuestions.length})
+                </button>
+              </nav>
+            ) : (
               <>
                 <div className="mode-toggle">
                   <button
@@ -902,10 +1168,18 @@ export default function App() {
                 )}
               </>
             )}
+
+            <div className="user-account-pill">
+              <span className={`sync-dot dot-${syncStatus}`} title="Bulud sinxronizasiyası aktivdir" />
+              <span className="user-pill-name">{profileCreds.displayName.split(' (')[0]}</span>
+              <button className="btn-logout-mini" onClick={handleProfileLogout}>
+                Çıxış
+              </button>
+            </div>
           </div>
         </div>
 
-        {selectedTopicId && selectedVariant && (
+        {selectedVariant !== null && (
           <div className="progress-bar-bg">
             <div
               className="progress-bar-fill"
@@ -917,136 +1191,361 @@ export default function App() {
         )}
       </header>
 
-      {/* ======================================================== */}
-      {/* CLOUD PROFILE & PROGRESS TRACKER MODAL                   */}
-      {/* ======================================================== */}
-      {showProfileModal && (
-        <div className="profile-modal-backdrop" onClick={() => setShowProfileModal(false)}>
-          <div className="profile-modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="profile-modal-header">
-              <div>
-                <span className="badge-academic">Bulud Sinxronizasiyalı Şəxsi Kabinet</span>
-                <h2 className="clean-section-title" style={{ marginTop: '4px' }}>
-                  {profileCreds
-                    ? `Xoş gəldiniz, ${profileCreds.displayName}`
-                    : 'Şəxsi Profilə Giriş və Cihazlararası Sinxronizasiya'}
-                </h2>
+      <main className="content-wrap">
+        {/* ======================================================== */}
+        {/* ACTIVE QUIZ VIEW                                         */}
+        {/* ======================================================== */}
+        {selectedVariant !== null ? (
+          <>
+            <div className="control-strip">
+              <div className="q-nav-status">
+                <span>Sual <strong>{currentIndex + 1}</strong> / {questions.length}</span>
+                <span className="status-dot">•</span>
+                <span>Cavablanan: <strong>{questions.filter((q) => userAnswers[q.id]).length}/{questions.length}</strong></span>
+                <span className="status-dot">•</span>
+                <span className="text-green">Düz: <strong>{stats.correct}</strong></span>
+                <span className="status-dot">•</span>
+                <span className="text-red">Səhv: <strong>{stats.wrong}</strong></span>
               </div>
-              <button className="btn-close" onClick={() => setShowProfileModal(false)}>X</button>
+
+              <div className="action-buttons">
+                <button
+                  className="btn-secondary"
+                  onClick={() => setShowQuestionDrawer(!showQuestionDrawer)}
+                >
+                  Suallar Cədvəli ({questions.filter((q) => userAnswers[q.id]).length}/{questions.length})
+                </button>
+                <button className="btn-secondary" onClick={handleShuffle}>
+                  Qarışdır
+                </button>
+                <button className="btn-secondary" onClick={handleResetCurrent}>
+                  Sıfırla
+                </button>
+              </div>
             </div>
 
-            {!profileCreds ? (
-              <form className="profile-login-form" onSubmit={handleProfileLogin}>
-                <p className="clean-section-sub" style={{ marginBottom: '12px' }}>
-                  Adınızı və özünüz üçün təyin etdiyiniz 4 rəqəmli PIN-kodu daxil edin. Həm telefonunuzda, həm də kompüterinizdə eyni Ad və PIN-kodla daxil olduqda bütün işlədiyiniz testlər, yarıda qaldığınız suallar və səhv dəftəriniz avtomatik eyni olacaq.
-                </p>
-                <div className="profile-inputs-row">
-                  <div className="profile-field">
-                    <label>Adınız</label>
-                    <input
-                      type="text"
-                      placeholder="Məs: Yusif"
-                      value={loginName}
-                      onChange={(e) => setLoginName(e.target.value)}
-                      required
-                    />
-                  </div>
-                  <div className="profile-field">
-                    <label>4 Rəqəmli PIN-kod</label>
-                    <input
-                      type="text"
-                      placeholder="Məs: 1990"
-                      maxLength={12}
-                      value={loginPin}
-                      onChange={(e) => setLoginPin(e.target.value)}
-                      required
-                    />
-                  </div>
+            {showQuestionDrawer && (
+              <div className="drawer-card">
+                <div className="drawer-header">
+                  <span>Suala Keçid (Yaşıl = Düz, Qırmızı = Səhv, Boz = Boş):</span>
+                  <button className="btn-close" onClick={() => setShowQuestionDrawer(false)}>X</button>
                 </div>
-                {syncMessage && <div className="profile-sync-msg">{syncMessage}</div>}
-                <button type="submit" className="btn-topic-primary" style={{ width: '100%', marginTop: '10px' }}>
-                  {syncStatus === 'syncing' ? 'Sinxronlaşdırılır...' : 'Profilə Daxil Ol və Buludda Saxla'}
-                </button>
-              </form>
-            ) : (
-              <div className="profile-connected-box">
-                <div className="profile-creds-strip">
-                  <div>
-                    <span>Aktiv Bulud Profili: <strong>{profileCreds.displayName}</strong> (PIN: <strong>{profileCreds.pin}</strong>)</span>
-                    <span className="sync-badge-live">
-                      {syncStatus === 'syncing' ? 'Buluda yazılır...' : 'Buludla Tam Sinxron'}
-                    </span>
-                  </div>
-                  <button className="btn-quick-outline" onClick={handleProfileLogout}>
-                    Profildən Çıx
-                  </button>
+                <div className="q-grid">
+                  {questions.map((q, idx) => {
+                    const ans = userAnswers[q.id];
+                    let statusClass = 'unanswered';
+                    if (ans) {
+                      if (mode === 'study' || examSubmitted) {
+                        statusClass = ans === q.correct ? 'correct' : 'wrong';
+                      } else {
+                        statusClass = 'answered';
+                      }
+                    }
+                    return (
+                      <button
+                        key={q.id}
+                        className={`q-grid-btn ${statusClass} ${idx === currentIndex ? 'current' : ''}`}
+                        onClick={() => {
+                          setCurrentIndex(idx);
+                          setShowQuestionDrawer(false);
+                        }}
+                      >
+                        {idx + 1}
+                      </button>
+                    );
+                  })}
                 </div>
-                {syncMessage && <div className="profile-sync-msg">{syncMessage}</div>}
               </div>
             )}
 
-            {/* Overview of all 12 Test Packs in Mövzu 1.1 */}
-            <div className="profile-packs-overview">
-              <div className="profile-summary-counters">
-                <div className="p-counter-box">
-                  <span>Tamamlanan Testlər</span>
-                  <strong className="text-green">{completedPacksCount} / 12</strong>
+            {mode === 'exam' && examSubmitted ? (
+              <div className="results-card">
+                <div className="results-header">
+                  <span className="results-pill">Rəsmi MİQ Sınaq Nəticəsi (4 Səhv = -1 Düz)</span>
+                  <h2 className="results-score">{stats.miqScore80} / 80 Bal</h2>
+                  <p className="results-subtitle">
+                    {questions.length} sualdan <strong>{stats.correct} düz</strong>, <strong>{stats.wrong} səhv</strong> • Xalis düz: <strong>{stats.netCorrect}</strong> ({stats.percentage}%)
+                  </p>
                 </div>
-                <div className="p-counter-box">
-                  <span>Yarıda Qalan Testlər</span>
-                  <strong style={{ color: '#d97706' }}>{inProgressPacksCount}</strong>
+
+                <div className="stats-row">
+                  <div className="stat-box stat-correct">
+                    <span className="stat-num">{stats.correct}</span>
+                    <span className="stat-lbl">Düzgün</span>
+                  </div>
+                  <div className="stat-box stat-wrong">
+                    <span className="stat-num">{stats.wrong}</span>
+                    <span className="stat-lbl">Səhv</span>
+                  </div>
+                  <div className="stat-box stat-empty">
+                    <span className="stat-num">{stats.unanswered}</span>
+                    <span className="stat-lbl">Boş</span>
+                  </div>
                 </div>
-                <div className="p-counter-box">
-                  <span>Cəmi İşlənilən Sual</span>
-                  <strong className="text-blue">{globalMiqSummary.answered} / 340</strong>
+
+                <div className="results-actions">
+                  {stats.wrong > 0 && (
+                    <button className="btn-primary" onClick={handleRetestWrong}>
+                      Səhvləri Təkrar İşlə ({stats.wrong})
+                    </button>
+                  )}
+                  <button
+                    className="btn-secondary"
+                    onClick={() => {
+                      setExamSubmitted(false);
+                      setCurrentIndex(0);
+                      setMode('study');
+                    }}
+                  >
+                    İzahlara Bax
+                  </button>
+                  <button className="btn-secondary" onClick={() => setSelectedVariant(null)}>
+                    Kabinetə / Menyuya Qayıt
+                  </button>
                 </div>
-                <div className="p-counter-box">
-                  <span>Xalis MİQ Ekvivalenti</span>
-                  <strong>{globalMiqSummary.miqEquiv80} / 80 Bal</strong>
+              </div>
+            ) : (
+              currentQ && (
+                <div className="question-card">
+                  <div className="q-meta-row">
+                    <span className="q-badge">
+                      {isGuvenVariant
+                        ? `Güvən 2025 • Sual ${currentQ.num || currentIndex + 1}`
+                        : isTeacherVariant
+                        ? 'Müəllim Sınağı'
+                        : `Variant ${currentQ.variant}`}
+                    </span>
+                    <span className="q-index-tag">Sual {currentIndex + 1} / {questions.length}</span>
+                  </div>
+
+                  <h2 className="question-text" style={{ whiteSpace: 'pre-line' }}>
+                    {currentQ.question}
+                  </h2>
+
+                  {currentQ.image && (
+                    <div className="q-image-container">
+                      <img
+                        src={currentQ.image}
+                        alt={`Sual ${currentIndex + 1}`}
+                        className="q-attached-image"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
+
+                  <div className="options-list">
+                    {currentQ.options.map((opt) => {
+                      const letter = opt.substring(0, 1);
+                      const isSelected = userAnswers[currentQ.id] === letter;
+                      const isCorrect = letter === currentQ.correct;
+
+                      let optClass = 'opt-default';
+                      if (isSelected) optClass += ' opt-selected';
+
+                      if (mode === 'study' && isSelected) {
+                        optClass += isCorrect ? ' opt-correct' : ' opt-wrong';
+                      } else if (mode === 'study' && userAnswers[currentQ.id] && isCorrect) {
+                        optClass += ' opt-revealed-correct';
+                      }
+
+                      return (
+                        <button
+                          key={letter}
+                          className={`option-btn ${optClass}`}
+                          onClick={() => handleSelectOption(currentQ.id, letter)}
+                        >
+                          <span className="opt-letter">{letter}</span>
+                          <span className="opt-text">{opt.substring(3)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {mode === 'study' && (showExplanation[currentQ.id] || userAnswers[currentQ.id]) && (
+                    <div className={`explanation-box ${userAnswers[currentQ.id] === currentQ.correct ? 'exp-pass' : 'exp-fail'}`}>
+                      <div className="exp-status-line">
+                        <span className="exp-badge">
+                          {userAnswers[currentQ.id] === currentQ.correct
+                            ? 'Düzgün Cavab: ' + currentQ.correct
+                            : 'Düzgün Cavab: ' + currentQ.correct + ' (Seçiminiz: ' + (userAnswers[currentQ.id] || 'Yoxdur') + ')'}
+                        </span>
+                      </div>
+                      <p className="exp-body">{currentQ.explanation}</p>
+                    </div>
+                  )}
+
+                  <div className="q-footer-nav">
+                    <button
+                      className="btn-nav"
+                      disabled={currentIndex === 0}
+                      onClick={() => {
+                        setCurrentIndex((prev) => Math.max(0, prev - 1));
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                    >
+                      ← Əvvəlki
+                    </button>
+
+                    {mode === 'exam' && (
+                      <button
+                        className="btn-finish-exam"
+                        onClick={() => {
+                          if (window.confirm('İmtahanı bitirmək istədiyinizdən əminsiniz?')) {
+                            handleFinishExam();
+                          }
+                        }}
+                      >
+                        Bitir
+                      </button>
+                    )}
+
+                    <button
+                      className="btn-nav btn-nav-primary"
+                      disabled={currentIndex === questions.length - 1}
+                      onClick={() => {
+                        setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1));
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                    >
+                      Növbəti →
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+          </>
+        ) : portalView === 'dashboard' ? (
+          /* ======================================================== */
+          /* VIEW 1: PERSONAL USER DASHBOARD (ŞƏXSİ KABİNETİM)        */
+          /* ======================================================== */
+          <div className="dashboard-screen">
+            <div className="dash-welcome-card">
+              <div className="dash-welcome-left">
+                <span className="dash-sync-tag">
+                  {syncStatus === 'syncing' ? 'Buludla sinxronlaşdırılır...' : 'Bulud Sinxronizasiyası Aktivdir'}
+                </span>
+                <h2 className="dash-welcome-title">Xoş gəldiniz, {profileCreds.displayName}</h2>
+                <p className="dash-welcome-sub">
+                  İşlədiyiniz bütün testlər, yarıda qaldığınız sual nömrələri və səhvləriniz hesabınızda avtomatik yadda saxlanılır.
+                </p>
+              </div>
+              <div className="dash-welcome-actions">
+                <button
+                  className="btn-topic-primary"
+                  onClick={() => {
+                    setSelectedTopicId('1.1');
+                    setPortalView('topic_detail');
+                  }}
+                >
+                  Mövzu 1.1 Sınaqları və Konspektə Keç →
+                </button>
+              </div>
+            </div>
+
+            {/* KPI Summary Cards */}
+            <div className="dash-kpi-grid">
+              <div className="dash-kpi-card">
+                <span className="dash-kpi-label">Tamamlanan Test Paketləri</span>
+                <strong className="dash-kpi-val text-green">{completedPacksCount} / 12 Paket</strong>
+                <span className="dash-kpi-sub">100% bitirilmiş sınaqlar</span>
+              </div>
+              <div className="dash-kpi-card">
+                <span className="dash-kpi-label">Yarıda Qalan Testlər</span>
+                <strong className="dash-kpi-val" style={{ color: '#d97706' }}>{inProgressPacks.length} Paket</strong>
+                <span className="dash-kpi-sub">Başlanmayan: {notStartedPacksCount} paket</span>
+              </div>
+              <div className="dash-kpi-card">
+                <span className="dash-kpi-label">Cəmi İşlənilən Sual</span>
+                <strong className="dash-kpi-val text-blue">{globalMiqSummary.answered} / 340</strong>
+                <span className="dash-kpi-sub">Düz: {globalMiqSummary.correct} • Səhv: {globalMiqSummary.wrong} ({globalMiqSummary.accuracyPct}%)</span>
+              </div>
+              <div className="dash-kpi-card">
+                <span className="dash-kpi-label">Rəsmi MİQ Xalis Bal Ekvivalenti</span>
+                <strong className="dash-kpi-val">{globalMiqSummary.miqEquiv80} / 80 Bal</strong>
+                <span className="dash-kpi-sub">4 səhv = -1 düz düsturu ilə</span>
+              </div>
+            </div>
+
+            {/* Instant Resume Banner */}
+            {renderResumeBanner()}
+
+            {/* In-Progress Tests Section */}
+            {inProgressPacks.length > 0 && (
+              <div className="clean-list-container" style={{ marginBottom: '20px' }}>
+                <div className="clean-list-header">
+                  <div>
+                    <h2 className="clean-section-title">Yarıda Qalan Testləriniz ({inProgressPacks.length})</h2>
+                    <p className="clean-section-sub">
+                      Yarımçıq qoyduğunuz sınaqları birbaşa qaldığınız sualdan davam etdirin
+                    </p>
+                  </div>
+                </div>
+                <div className="clean-rows">
+                  {inProgressPacks.map((p) =>
+                    renderQuizPackRow(
+                      p.code,
+                      p.badgeText,
+                      p.badgeClass,
+                      p.title,
+                      p.subtitleExtra,
+                      p.questions
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Complete 12 Test Packs Progress Table */}
+            <div className="clean-list-container">
+              <div className="clean-list-header">
+                <div>
+                  <h2 className="clean-section-title">Mövzu 1.1 üzrə Bütün Test Paketlərinin İzləmə Cədvəli (12 Paket • 340 Sual)</h2>
+                  <p className="clean-section-sub">
+                    Hansı testləri bitirdiyinizi, hansılarda neçənci sualda qaldığınızı və hansılara başlamadığınızı buradan izləyin
+                  </p>
+                </div>
+                <div className="chapter-pills-row">
+                  {[
+                    { id: 'ALL', label: `Hamısı (12)` },
+                    { id: 'in_progress', label: `Yarıda Qalanlar (${inProgressPacks.length})` },
+                    { id: 'completed', label: `Tamamlananlar (${completedPacksCount})` },
+                    { id: 'not_started', label: `Başlanmayanlar (${notStartedPacksCount})` }
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      className={`chapter-pill ${dashPackFilter === f.id ? 'active' : ''}`}
+                      onClick={() => setDashPackFilter(f.id)}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
-              <h3 className="clean-section-title" style={{ fontSize: '14.5px', margin: '14px 0 8px' }}>
-                Mövzu 1.1 üzrə Bütün Sınaqların Cari Vəziyyəti (12 Test Paketi)
-              </h3>
-              <div className="profile-packs-list">
-                {allTopic1PacksSummary.map((item) => (
-                  <div key={item.code} className="profile-pack-item">
-                    <div className="profile-pack-info">
-                      <strong>{item.title}</strong>
-                      <span className={`quiz-status-pill pill-${item.statusType}`}>{item.statusLabel}</span>
-                    </div>
-                    <div className="profile-pack-actions">
-                      <span className="pack-mini-score">
-                        Düz: {item.correct} • Səhv: {item.wrong}
-                      </span>
-                      <button
-                        className="btn-pack-jump"
-                        onClick={() => {
-                          setShowProfileModal(false);
-                          handleSelectVariant(item.code, 'study', item.resumeIdx);
-                        }}
-                      >
-                        {item.statusType === 'in_progress'
-                          ? `Davam Et (Sual ${item.resumeIdx + 1})`
-                          : item.statusType === 'completed'
-                          ? 'Bax'
-                          : 'Başla'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
+              <div className="clean-rows">
+                {filteredDashboardPacks.length > 0 ? (
+                  filteredDashboardPacks.map((p) =>
+                    renderQuizPackRow(
+                      p.code,
+                      p.badgeText,
+                      p.badgeClass,
+                      p.title,
+                      `${p.bankName} • ${p.subtitleExtra}`,
+                      p.questions
+                    )
+                  )
+                ) : (
+                  <p className="clean-section-sub" style={{ padding: '16px 0', textAlign: 'center' }}>
+                    Bu filtr üzrə test paketi yoxdur.
+                  </p>
+                )}
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      <main className="content-wrap">
-        {/* ======================================================== */}
-        {/* SCREEN 1: OFFICIAL MİQ FRAMEWORK TOPIC CATALOG           */}
-        {/* ======================================================== */}
-        {!selectedTopicId ? (
+        ) : portalView === 'topics' ? (
+          /* ======================================================== */
+          /* VIEW 2: OFFICIAL MİQ FRAMEWORK TOPIC CATALOG             */
+          /* ======================================================== */
           <div className="catalog-screen">
             {renderResumeBanner()}
 
@@ -1072,7 +1571,7 @@ export default function App() {
                     <span className="topic-code-badge">{top.topicCode}</span>
                     {top.active ? (
                       <span className="topic-status-pill status-ready">
-                        Aktiv • Tamamlanıb: {completedPacksCount}/12 Test • Yarıda: {inProgressPacksCount}
+                        Aktiv • Tamamlanıb: {completedPacksCount}/12 Test • Yarıda: {inProgressPacks.length}
                       </span>
                     ) : (
                       <span className="topic-status-pill status-soon">Növbəti Mərhələdə</span>
@@ -1102,9 +1601,10 @@ export default function App() {
                         onClick={() => {
                           setSelectedTopicId(top.id);
                           setSelectedVariant(null);
+                          setPortalView('topic_detail');
                         }}
                       >
-                        Mövzu 1.1 Hazırlıq Mərkəzinə Daxil Ol →
+                        Mövzu 1.1 Sınaqları və Konspektə Daxil Ol →
                       </button>
                     ) : (
                       <button className="btn-topic-disabled" disabled>
@@ -1116,26 +1616,87 @@ export default function App() {
               ))}
             </div>
           </div>
-        ) : selectedVariant === null ? (
+        ) : portalView === 'mistakes' ? (
           /* ======================================================== */
-          /* SCREEN 2: TOPIC 1.1 6-TAB MASTERY HUB                    */
+          /* VIEW 3: DEDICATED MISTAKE NOTEBOOK (SƏHV DƏFTƏRİM)       */
+          /* ======================================================== */
+          <div className="clean-list-container">
+            <div className="clean-list-header">
+              <div>
+                <h2 className="clean-section-title">Səhv Dəftərim və Rəsmi MİQ Bal Hesablayıcısı (4 Səhv = -1 Düz)</h2>
+                <p className="clean-section-sub">
+                  Ümumi Baza: {globalMiqSummary.answered}/{globalMiqSummary.total} sual işlənilib • Düzgün: {globalMiqSummary.correct} • Səhv: {globalMiqSummary.wrong}
+                </p>
+              </div>
+              {allWrongQuestions.length > 0 && (
+                <div className="clean-quick-actions">
+                  <button
+                    className="btn-row-study"
+                    onClick={() => handleSelectVariant('WRONG-ALL', 'study', 0)}
+                  >
+                    Bütün Səhvləri Təkrar İşlə ({allWrongQuestions.length} Sual)
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="miq-formula-banner">
+              <div className="miq-stat-item">
+                <span className="miq-stat-lbl">İşlənilən Suallar</span>
+                <strong className="miq-stat-val">{globalMiqSummary.answered} / 340</strong>
+              </div>
+              <div className="miq-stat-item">
+                <span className="miq-stat-lbl">Düzgün Cavablar</span>
+                <strong className="miq-stat-val text-green">{globalMiqSummary.correct}</strong>
+              </div>
+              <div className="miq-stat-item">
+                <span className="miq-stat-lbl">Səhv Cavablar (-1/4 cərimə)</span>
+                <strong className="miq-stat-val text-red">{globalMiqSummary.wrong}</strong>
+              </div>
+              <div className="miq-stat-item">
+                <span className="miq-stat-lbl">Xalis Düzgün Cavab</span>
+                <strong className="miq-stat-val">{globalMiqSummary.netCorrect}</strong>
+              </div>
+              <div className="miq-stat-item">
+                <span className="miq-stat-lbl">80 İxtisas Balı Ekvivalenti</span>
+                <strong className="miq-stat-val text-blue">{globalMiqSummary.miqEquiv80} / 80</strong>
+              </div>
+            </div>
+
+            {allWrongQuestions.length > 0 ? (
+              <div className="mistake-notebook-section">
+                <h3 className="clean-section-title" style={{ marginBottom: '12px' }}>
+                  Səhv Cavablandırdığınız Suallar ({allWrongQuestions.length})
+                </h3>
+                <div className="mistake-cards-list">
+                  {allWrongQuestions.map((wq) => (
+                    <div key={wq.id} className="mistake-item-card">
+                      <div className="mistake-item-top">
+                        <span className="q-badge">{wq.id}</span>
+                        <span className="mistake-ans-tags">
+                          Seçiminiz: <strong className="text-red">{userAnswers[wq.id]}</strong> • Düzgün Cavab: <strong className="text-green">{wq.correct}</strong>
+                        </span>
+                      </div>
+                      <p className="mistake-q-text" style={{ whiteSpace: 'pre-line' }}>{wq.question}</p>
+                      <p className="mistake-exp-text">{wq.explanation}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="clean-section-sub" style={{ textAlign: 'center', padding: '24px 0' }}>
+                Hazırda Səhv Dəftərinizdə sual yoxdur.
+              </p>
+            )}
+          </div>
+        ) : (
+          /* ======================================================== */
+          /* VIEW 4: TOPIC 1.1 6-TAB MASTERY HUB                      */
           /* ======================================================== */
           <div className="simple-menu-screen">
             {renderResumeBanner()}
 
             <div className="clean-tabs">
-              <button
-                className={`clean-tab ${hubTab === 'study' ? 'active' : ''}`}
-                onClick={() => setHubTab('study')}
-              >
-                Konspekt və Səsli Dərs
-              </button>
-              <button
-                className={`clean-tab ${hubTab === 'flashcards' ? 'active' : ''}`}
-                onClick={() => setHubTab('flashcards')}
-              >
-                Yaddaş Kartları ({knownFlashcardsCount}/65)
-              </button>
               <button
                 className={`clean-tab ${hubTab === 'guven' ? 'active' : ''}`}
                 onClick={() => setHubTab('guven')}
@@ -1155,16 +1716,25 @@ export default function App() {
                 Müəllim ({totalTeacherAnswered}/165)
               </button>
               <button
+                className={`clean-tab ${hubTab === 'study' ? 'active' : ''}`}
+                onClick={() => setHubTab('study')}
+              >
+                Konspekt və Səsli Dərs
+              </button>
+              <button
+                className={`clean-tab ${hubTab === 'flashcards' ? 'active' : ''}`}
+                onClick={() => setHubTab('flashcards')}
+              >
+                Kartlar ({knownFlashcardsCount}/65)
+              </button>
+              <button
                 className={`clean-tab ${hubTab === 'analytics' ? 'active' : ''}`}
                 onClick={() => setHubTab('analytics')}
               >
-                Səhv Dəftəri ({allWrongQuestions.length})
+                Diaqnostika
               </button>
             </div>
 
-            {/* ---------------------------------------------------- */}
-            {/* TAB 1: KONSPEKT VƏ SƏSLİ DƏRS                        */}
-            {/* ---------------------------------------------------- */}
             {hubTab === 'study' && (
               <div className="study-hub-container">
                 <div className="audio-lessons-bar">
@@ -1243,9 +1813,6 @@ export default function App() {
               </div>
             )}
 
-            {/* ---------------------------------------------------- */}
-            {/* TAB 2: YADDAŞ KARTLARI (65 FLASHCARDS)               */}
-            {/* ---------------------------------------------------- */}
             {hubTab === 'flashcards' && (
               <div className="clean-list-container">
                 <div className="clean-list-header">
@@ -1371,9 +1938,6 @@ export default function App() {
               </div>
             )}
 
-            {/* ---------------------------------------------------- */}
-            {/* TAB 3: GÜVƏN 2025 TEST BANKI (95 SUAL)               */}
-            {/* ---------------------------------------------------- */}
             {hubTab === 'guven' && (
               <div className="clean-list-container">
                 <div className="clean-list-header">
@@ -1408,9 +1972,6 @@ export default function App() {
               </div>
             )}
 
-            {/* ---------------------------------------------------- */}
-            {/* TAB 4: DƏRSLİK TESTLƏRİ (80 SUAL)                    */}
-            {/* ---------------------------------------------------- */}
             {hubTab === 'textbook' && (
               <div className="clean-list-container">
                 <div className="clean-list-header">
@@ -1445,9 +2006,6 @@ export default function App() {
               </div>
             )}
 
-            {/* ---------------------------------------------------- */}
-            {/* TAB 5: MÜƏLLİM SINAQLARI (165 SUAL)                  */}
-            {/* ---------------------------------------------------- */}
             {hubTab === 'teacher' && (
               <div className="clean-list-container">
                 <div className="clean-list-header">
@@ -1483,99 +2041,9 @@ export default function App() {
               </div>
             )}
 
-            {/* ---------------------------------------------------- */}
-            {/* TAB 6: SƏHV DƏFTƏRİ VƏ RƏSMİ MİQ DİAQNOSTİKASI       */}
-            {/* ---------------------------------------------------- */}
             {hubTab === 'analytics' && (
               <div className="clean-list-container">
-                <div className="clean-list-header">
-                  <div>
-                    <h2 className="clean-section-title">Səhv Dəftəri və Rəsmi MİQ Bal Hesablayıcısı (4 Səhv = -1 Düz)</h2>
-                    <p className="clean-section-sub">
-                      Ümumi Baza: {globalMiqSummary.answered}/{globalMiqSummary.total} sual işlənilib • Düzgün: {globalMiqSummary.correct} • Səhv: {globalMiqSummary.wrong}
-                    </p>
-                  </div>
-                  {allWrongQuestions.length > 0 && (
-                    <div className="clean-quick-actions">
-                      <button
-                        className="btn-row-study"
-                        onClick={() => handleSelectVariant('WRONG-ALL', 'study', 0)}
-                      >
-                        Bütün Səhvləri Təkrar İşlə ({allWrongQuestions.length} Sual)
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="miq-formula-banner">
-                  <div className="miq-stat-item">
-                    <span className="miq-stat-lbl">İşlənilən Suallar</span>
-                    <strong className="miq-stat-val">{globalMiqSummary.answered} / 340</strong>
-                  </div>
-                  <div className="miq-stat-item">
-                    <span className="miq-stat-lbl">Düzgün Cavablar</span>
-                    <strong className="miq-stat-val text-green">{globalMiqSummary.correct}</strong>
-                  </div>
-                  <div className="miq-stat-item">
-                    <span className="miq-stat-lbl">Səhv Cavablar (-1/4 cərimə)</span>
-                    <strong className="miq-stat-val text-red">{globalMiqSummary.wrong}</strong>
-                  </div>
-                  <div className="miq-stat-item">
-                    <span className="miq-stat-lbl">Xalis Düzgün Cavab</span>
-                    <strong className="miq-stat-val">{globalMiqSummary.netCorrect}</strong>
-                  </div>
-                  <div className="miq-stat-item">
-                    <span className="miq-stat-lbl">80 İxtisas Balı Ekvivalenti</span>
-                    <strong className="miq-stat-val text-blue">{globalMiqSummary.miqEquiv80} / 80</strong>
-                  </div>
-                </div>
-
-                {examHistory.length > 0 && (
-                  <div style={{ marginBottom: '24px' }}>
-                    <h3 className="clean-section-title" style={{ marginBottom: '10px' }}>
-                      Tamamlanmış Vaxtlı Sınaqların Tarixçəsi ({examHistory.length})
-                    </h3>
-                    <div className="clean-rows">
-                      {examHistory.slice(0, 10).map((eh) => (
-                        <div key={eh.id} className="clean-row-card">
-                          <div className="clean-row-main">
-                            <span className="clean-row-badge">{eh.miqScore80} / 80 Bal</span>
-                            <div className="clean-row-text">
-                              <h4 className="clean-row-title">{eh.title}</h4>
-                              <span className="clean-row-meta">
-                                Tarix: {eh.date} • Düz: <strong className="text-green">{eh.correct}</strong> • Səhv: <strong className="text-red">{eh.wrong}</strong> (Cəmi: {eh.total})
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {allWrongQuestions.length > 0 && (
-                  <div className="mistake-notebook-section">
-                    <h3 className="clean-section-title" style={{ marginBottom: '12px' }}>
-                      Səhv Cavablandırdığınız Suallar ({allWrongQuestions.length})
-                    </h3>
-                    <div className="mistake-cards-list">
-                      {allWrongQuestions.map((wq) => (
-                        <div key={wq.id} className="mistake-item-card">
-                          <div className="mistake-item-top">
-                            <span className="q-badge">{wq.id}</span>
-                            <span className="mistake-ans-tags">
-                              Seçiminiz: <strong className="text-red">{userAnswers[wq.id]}</strong> • Düzgün Cavab: <strong className="text-green">{wq.correct}</strong>
-                            </span>
-                          </div>
-                          <p className="mistake-q-text" style={{ whiteSpace: 'pre-line' }}>{wq.question}</p>
-                          <p className="mistake-exp-text">{wq.explanation}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <h3 className="clean-section-title" style={{ margin: '24px 0 12px' }}>
+                <h3 className="clean-section-title" style={{ marginBottom: '12px' }}>
                   Dərslik Alt-Bölmələri üzrə Mənimsəmə Diaqnostikası
                 </h3>
                 <div className="category-list">
@@ -1607,228 +2075,6 @@ export default function App() {
               </div>
             )}
           </div>
-        ) : (
-          /* ======================================================== */
-          /* SCREEN 3: ACTIVE QUIZ VIEW                               */
-          /* ======================================================== */
-          <>
-            <div className="control-strip">
-              <div className="q-nav-status">
-                <span>Sual <strong>{currentIndex + 1}</strong> / {questions.length}</span>
-                <span className="status-dot">•</span>
-                <span>Cavablanan: <strong>{questions.filter((q) => userAnswers[q.id]).length}/{questions.length}</strong></span>
-                <span className="status-dot">•</span>
-                <span className="text-green">Düz: <strong>{stats.correct}</strong></span>
-                <span className="status-dot">•</span>
-                <span className="text-red">Səhv: <strong>{stats.wrong}</strong></span>
-              </div>
-
-              <div className="action-buttons">
-                <button
-                  className="btn-secondary"
-                  onClick={() => setShowQuestionDrawer(!showQuestionDrawer)}
-                >
-                  Suallar Cədvəli ({questions.filter((q) => userAnswers[q.id]).length}/{questions.length})
-                </button>
-                <button className="btn-secondary" onClick={handleShuffle}>
-                  Qarışdır
-                </button>
-                <button className="btn-secondary" onClick={handleResetCurrent}>
-                  Sıfırla
-                </button>
-              </div>
-            </div>
-
-            {showQuestionDrawer && (
-              <div className="drawer-card">
-                <div className="drawer-header">
-                  <span>Suala Keçid (Yaşıl = Düz, Qırmızı = Səhv, Boz = Boş):</span>
-                  <button className="btn-close" onClick={() => setShowQuestionDrawer(false)}>X</button>
-                </div>
-                <div className="q-grid">
-                  {questions.map((q, idx) => {
-                    const ans = userAnswers[q.id];
-                    let statusClass = 'unanswered';
-                    if (ans) {
-                      if (mode === 'study' || examSubmitted) {
-                        statusClass = ans === q.correct ? 'correct' : 'wrong';
-                      } else {
-                        statusClass = 'answered';
-                      }
-                    }
-                    return (
-                      <button
-                        key={q.id}
-                        className={`q-grid-btn ${statusClass} ${idx === currentIndex ? 'current' : ''}`}
-                        onClick={() => {
-                          setCurrentIndex(idx);
-                          setShowQuestionDrawer(false);
-                        }}
-                      >
-                        {idx + 1}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {mode === 'exam' && examSubmitted ? (
-              <div className="results-card">
-                <div className="results-header">
-                  <span className="results-pill">Rəsmi MİQ Sınaq Nəticəsi (4 Səhv = -1 Düz)</span>
-                  <h2 className="results-score">{stats.miqScore80} / 80 Bal</h2>
-                  <p className="results-subtitle">
-                    {questions.length} sualdan <strong>{stats.correct} düz</strong>, <strong>{stats.wrong} səhv</strong> • Xalis düz: <strong>{stats.netCorrect}</strong> ({stats.percentage}%)
-                  </p>
-                </div>
-
-                <div className="stats-row">
-                  <div className="stat-box stat-correct">
-                    <span className="stat-num">{stats.correct}</span>
-                    <span className="stat-lbl">Düzgün</span>
-                  </div>
-                  <div className="stat-box stat-wrong">
-                    <span className="stat-num">{stats.wrong}</span>
-                    <span className="stat-lbl">Səhv</span>
-                  </div>
-                  <div className="stat-box stat-empty">
-                    <span className="stat-num">{stats.unanswered}</span>
-                    <span className="stat-lbl">Boş</span>
-                  </div>
-                </div>
-
-                <div className="results-actions">
-                  {stats.wrong > 0 && (
-                    <button className="btn-primary" onClick={handleRetestWrong}>
-                      Səhvləri Təkrar İşlə ({stats.wrong})
-                    </button>
-                  )}
-                  <button
-                    className="btn-secondary"
-                    onClick={() => {
-                      setExamSubmitted(false);
-                      setCurrentIndex(0);
-                      setMode('study');
-                    }}
-                  >
-                    İzahlara Bax
-                  </button>
-                  <button className="btn-secondary" onClick={() => setSelectedVariant(null)}>
-                    Mövzu Menyusuna Qayıt
-                  </button>
-                </div>
-              </div>
-            ) : (
-              currentQ && (
-                <div className="question-card">
-                  <div className="q-meta-row">
-                    <span className="q-badge">
-                      {isGuvenVariant
-                        ? `Güvən 2025 • Sual ${currentQ.num || currentIndex + 1}`
-                        : isTeacherVariant
-                        ? 'Müəllim Sınağı'
-                        : `Variant ${currentQ.variant}`}
-                    </span>
-                    <span className="q-index-tag">Sual {currentIndex + 1} / {questions.length}</span>
-                  </div>
-
-                  <h2 className="question-text" style={{ whiteSpace: 'pre-line' }}>
-                    {currentQ.question}
-                  </h2>
-
-                  {currentQ.image && (
-                    <div className="q-image-container">
-                      <img
-                        src={currentQ.image}
-                        alt={`Sual ${currentIndex + 1}`}
-                        className="q-attached-image"
-                        loading="lazy"
-                      />
-                    </div>
-                  )}
-
-                  <div className="options-list">
-                    {currentQ.options.map((opt) => {
-                      const letter = opt.substring(0, 1);
-                      const isSelected = userAnswers[currentQ.id] === letter;
-                      const isCorrect = letter === currentQ.correct;
-
-                      let optClass = 'opt-default';
-                      if (isSelected) optClass += ' opt-selected';
-
-                      if (mode === 'study' && isSelected) {
-                        optClass += isCorrect ? ' opt-correct' : ' opt-wrong';
-                      } else if (mode === 'study' && userAnswers[currentQ.id] && isCorrect) {
-                        optClass += ' opt-revealed-correct';
-                      }
-
-                      return (
-                        <button
-                          key={letter}
-                          className={`option-btn ${optClass}`}
-                          onClick={() => handleSelectOption(currentQ.id, letter)}
-                        >
-                          <span className="opt-letter">{letter}</span>
-                          <span className="opt-text">{opt.substring(3)}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  {mode === 'study' && (showExplanation[currentQ.id] || userAnswers[currentQ.id]) && (
-                    <div className={`explanation-box ${userAnswers[currentQ.id] === currentQ.correct ? 'exp-pass' : 'exp-fail'}`}>
-                      <div className="exp-status-line">
-                        <span className="exp-badge">
-                          {userAnswers[currentQ.id] === currentQ.correct
-                            ? 'Düzgün Cavab: ' + currentQ.correct
-                            : 'Düzgün Cavab: ' + currentQ.correct + ' (Seçiminiz: ' + (userAnswers[currentQ.id] || 'Yoxdur') + ')'}
-                        </span>
-                      </div>
-                      <p className="exp-body">{currentQ.explanation}</p>
-                    </div>
-                  )}
-
-                  <div className="q-footer-nav">
-                    <button
-                      className="btn-nav"
-                      disabled={currentIndex === 0}
-                      onClick={() => {
-                        setCurrentIndex((prev) => Math.max(0, prev - 1));
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                    >
-                      ← Əvvəlki
-                    </button>
-
-                    {mode === 'exam' && (
-                      <button
-                        className="btn-finish-exam"
-                        onClick={() => {
-                          if (window.confirm('İmtahanı bitirmək istədiyinizdən əminsiniz?')) {
-                            handleFinishExam();
-                          }
-                        }}
-                      >
-                        Bitir
-                      </button>
-                    )}
-
-                    <button
-                      className="btn-nav btn-nav-primary"
-                      disabled={currentIndex === questions.length - 1}
-                      onClick={() => {
-                        setCurrentIndex((prev) => Math.min(questions.length - 1, prev + 1));
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                    >
-                      Növbəti →
-                    </button>
-                  </div>
-                </div>
-              )
-            )}
-          </>
         )}
       </main>
     </div>
